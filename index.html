@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Sistem Informasi Bimbingan Belajar PWA</title>
 
-  <!-- Hidden Blogger Post Thumbnail (Agar postingan Blogger memiliki sampul gambar) -->
+  <!-- Hidden Blogger Post Thumbnail -->
   <div style="display:none !important; visibility:hidden !important; opacity:0; width:0; height:0; overflow:hidden;">
     <img src="https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=800" alt="Bimbel App Thumbnail" />
   </div>
@@ -21,10 +21,9 @@
     // =========================================================================
     // KONFIGURASI KONEKSI GOOGLE SHEETS BACKEND
     // =========================================================================
-    // Set IS_PREVIEW = false jika ingin terhubung SUNGGUHAN ke Google Sheets.
-    // Masukkan Web App URL hasil Deploy Google Apps Script pada GAS_URL.
+    // Set IS_PREVIEW = false untuk terhubung SUNGGUHAN ke Google Sheets.
     const IS_PREVIEW = false; 
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbzdkzin-kDYQQfpocba8iuLIkTdkxp-5DLq5qfWCkaCN3BHblt2QfeQ9tUpU_vVOmYlbQ/exec"; 
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbzdkzin-kDYQQfpocba8iuLIkTdkxp-5DLq5qfWCkaCN3BHblt2QfeQ9tUpU_vVOmYlbQ/exec; 
 
     // Configuration Default Whitelabel, CS WA & Rekening
     window.APP_CONFIG = {
@@ -81,7 +80,7 @@
 </head>
 <body class="bg-slate-100 text-slate-800 font-sans antialiased m-0 p-0 border-0">
 
-  <!-- Full-Page SPA Overlay Container (Zero XML Modification untuk Blogger) -->
+  <!-- Full-Page SPA Overlay Container -->
   <div id="blogger-app-overlay" class="fixed inset-0 z-[999999] bg-slate-100 flex flex-col overflow-y-auto font-sans antialiased">
 
     <!-- PWA Install Prompt Banner -->
@@ -140,7 +139,7 @@
           <div class="border-t border-slate-200 pt-3 mt-3">
             <p class="text-[11px] text-slate-500 font-bold mb-1.5 text-center">Pilih Akun Demo (Klik Langsung):</p>
             <div class="grid grid-cols-3 gap-1.5 text-[10px]">
-              <button type="button" onclick="fillLogin('admin', 'edudigital')" class="p-1.5 bg-slate-100 hover:bg-slate-200 rounded text-slate-700 font-bold border text-center">
+              <button type="button" onclick="fillLogin('admin', 'admin2026')" class="p-1.5 bg-slate-100 hover:bg-slate-200 rounded text-slate-700 font-bold border text-center">
                 🔑 Admin
               </button>
               <button type="button" onclick="fillLogin('guru', 'edudigital')" class="p-1.5 bg-slate-100 hover:bg-slate-200 rounded text-slate-700 font-bold border text-center">
@@ -313,7 +312,7 @@
       }
     });
 
-    // Dual-Mode Universal API Call (Mendukung google.script.run DAN HTTP Fetch POST untuk Blogger)
+    // Dual-Mode Universal API Call (CORS-Compliant HTTP POST & Native GAS Support)
     async function apiCall(action, data = {}) {
       if (IS_PREVIEW) {
         return new Promise((resolve) => {
@@ -334,10 +333,13 @@
       }
 
       // Opsi B: Jika dipasang di Blogger / Website Eksternal via HTTP POST Fetch ke Web App GAS
-      if (GAS_URL && GAS_URL !== "URL_DEPLOY_GAS_ANDA_DISINI") {
+      if (GAS_URL && GAS_URL.trim() !== "" && !GAS_URL.includes("URL_DEPLOY_GAS_ANDA_DISINI")) {
         try {
+          // 'Content-Type: text/plain;charset=utf-8' mencegah CORS preflight OPTIONS request
           const response = await fetch(GAS_URL, {
             method: 'POST',
+            mode: 'cors',
+            redirect: 'follow',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify({ action: action, data: data })
           });
@@ -345,13 +347,13 @@
           return res;
         } catch (err) {
           console.error("Koneksi Google Sheets Error:", err);
-          showToast("Gagal terhubung ke Google Sheets Backend!");
+          showToast("Gagal terhubung! Pastikan izin Deployment GAS diset ke 'Anyone'.");
           throw err;
         }
       }
 
-      showToast("URL Web App GAS belum diisi!");
-      return { success: false, message: "Variabel GAS_URL belum dikonfigurasi dengan URL Web App Anda." };
+      showToast("URL Web App GAS belum dikonfigurasi!");
+      return { success: false, message: "Variabel GAS_URL belum dikonfigurasi." };
     }
 
     function syncDataFromBackend(appData) {
@@ -501,7 +503,7 @@
           alert.classList.remove('hidden');
         }
       } catch (err) {
-        alert.textContent = "Gagal menghubungkan ke database Google Sheets!";
+        alert.textContent = "Gagal menghubungkan ke database Google Sheets! Pastikan Izin Deployment diset ke 'Anyone'.";
         alert.classList.remove('hidden');
       } finally {
         btn.disabled = false;
