@@ -23,7 +23,7 @@
     // =========================================================================
     // Set IS_PREVIEW = false untuk terhubung SUNGGUHAN ke Google Sheets.
     const IS_PREVIEW = false; 
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbzsnlFd5bgcV-1HIjOVp9sE648pmxeNQcQQWRgdRANo0Y0fAT1U991k64P2SUZ9bR9AjQ/exec"; 
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbzdkzin-kDYQQfpocba8iuLIkTdkxp-5DLq5qfWCkaCN3BHblt2QfeQ9tUpU_vVOmYlbQ/exec"; 
 
     // Configuration Default Whitelabel, CS WA & Rekening
     window.APP_CONFIG = {
@@ -734,6 +734,15 @@
       }
     }
 
+    function switchActiveChild(childId, viewToRefresh = 'schedules') {
+      activeChildId = childId;
+      const childObj = dummyDB.students.find(s => s.id === childId);
+      if (childObj) {
+        showToast(`✓ Dialihkan ke data anak: ${childObj.name}`);
+      }
+      renderView(viewToRefresh);
+    }
+
     function renderNavigationMenu() {
       const role = currentUser.role;
       const navContainer = document.getElementById('main-nav');
@@ -1248,9 +1257,43 @@
     function renderSchedulesView(filterClassId = null) {
       const container = document.getElementById('view-schedules');
       
-      if (currentUser.role === 'parent' && activeChildId && !filterClassId) {
-        const studentObj = dummyDB.students.find(s => s.id === activeChildId);
-        if (studentObj) filterClassId = studentObj.class_id;
+      let parentChildHeader = '';
+      if (currentUser.role === 'parent') {
+        const myChildren = dummyDB.students.filter(s => s.parent_id === currentUser.id);
+        if (!activeChildId && myChildren.length > 0) activeChildId = myChildren[0].id;
+        
+        const activeChild = dummyDB.students.find(s => s.id === activeChildId) || myChildren[0];
+        if (activeChild && !filterClassId) {
+          filterClassId = activeChild.class_id;
+        }
+
+        const childClassObj = dummyDB.classes.find(c => c.id === (activeChild ? activeChild.class_id : ''));
+
+        parentChildHeader = `
+          <div class="bg-gradient-to-r from-blue-900 to-indigo-900 text-white p-3.5 rounded-xl shadow-xs text-xs mb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-amber-400 text-slate-900 font-extrabold flex items-center justify-center text-lg shadow-inner">
+                <i class="fa-solid fa-graduation-cap"></i>
+              </div>
+              <div>
+                <span class="text-[10px] text-blue-200 font-bold uppercase tracking-wider block">Jadwal Belajar Kelas Anak</span>
+                <h3 class="text-sm font-bold text-white leading-tight">${activeChild ? activeChild.name : 'Siswa'}</h3>
+                <p class="text-[10px] text-amber-300 font-semibold mt-0.5"><i class="fa-solid fa-chalkboard-user mr-1"></i>${childClassObj ? childClassObj.class_name : 'Kelas'}</p>
+              </div>
+            </div>
+            ${myChildren.length > 1 ? `
+              <div class="bg-white/10 p-2 rounded-lg border border-white/20 flex items-center gap-2">
+                <span class="text-[11px] font-bold text-blue-100 whitespace-nowrap"><i class="fa-solid fa-children mr-1"></i>Pilih Anak:</span>
+                <select onchange="switchActiveChild(this.value, 'schedules')" class="bg-white text-slate-800 p-1.5 px-2 rounded font-bold text-xs shadow focus:outline-none">
+                  ${myChildren.map(ch => {
+                    const cObj = dummyDB.classes.find(c => c.id === ch.class_id);
+                    return `<option value="${ch.id}" ${ch.id === activeChildId ? 'selected' : ''}>${ch.name} - ${cObj ? cObj.class_name : 'Kelas'}</option>`;
+                  }).join('')}
+                </select>
+              </div>
+            ` : ''}
+          </div>
+        `;
       }
 
       let selectedClassFilter = filterClassId || 'ALL';
@@ -1261,10 +1304,11 @@
       }
 
       container.innerHTML = `
+        ${parentChildHeader}
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 no-print">
           <div>
             <h2 class="text-lg font-bold text-slate-800">Jadwal Kelas Belajar</h2>
-            <p class="text-xs text-slate-500">Pilih filter kelas agar jadwal tidak tertukar</p>
+            <p class="text-xs text-slate-500">${currentUser.role === 'parent' ? 'Jadwal rutin mingguan bimbel anak Anda' : 'Pilih filter kelas agar jadwal tidak tertukar'}</p>
           </div>
           <div class="flex items-center gap-2">
             ${currentUser.role === 'admin' ? `
@@ -1278,32 +1322,40 @@
           </div>
         </div>
 
-        <div class="bg-white p-2.5 rounded-xl border border-slate-200 flex items-center gap-2 text-xs no-print">
-          <span class="font-bold text-slate-700 whitespace-nowrap"><i class="fa-solid fa-filter text-blue-800"></i> Filter Kelas:</span>
-          <select id="schedule-class-filter" onchange="renderSchedulesView(this.value)" class="w-full bg-slate-50 p-1.5 rounded border border-slate-300 font-semibold text-slate-800">
-            <option value="ALL" ${selectedClassFilter === 'ALL' ? 'selected' : ''}>-- Semua Kelas Bimbel --</option>
-            ${dummyDB.classes.map(c => `<option value="${c.id}" ${selectedClassFilter === c.id ? 'selected' : ''}>${c.class_name}</option>`).join('')}
-          </select>
-        </div>
+        ${currentUser.role !== 'parent' ? `
+          <div class="bg-white p-2.5 rounded-xl border border-slate-200 flex items-center gap-2 text-xs no-print">
+            <span class="font-bold text-slate-700 whitespace-nowrap"><i class="fa-solid fa-filter text-blue-800"></i> Filter Kelas:</span>
+            <select id="schedule-class-filter" onchange="renderSchedulesView(this.value)" class="w-full bg-slate-50 p-1.5 rounded border border-slate-300 font-semibold text-slate-800">
+              <option value="ALL" ${selectedClassFilter === 'ALL' ? 'selected' : ''}>-- Semua Kelas Bimbel --</option>
+              ${dummyDB.classes.map(c => `<option value="${c.id}" ${selectedClassFilter === c.id ? 'selected' : ''}>${c.class_name}</option>`).join('')}
+            </select>
+          </div>
+        ` : ''}
 
         <div class="printable grid md:grid-cols-2 gap-3 bg-white p-3 rounded-xl border border-slate-200">
           ${['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'].map(day => {
             const daySchedules = filteredSchedules.filter(s => s.day === day);
             return `
               <div class="border border-slate-200 rounded-lg overflow-hidden">
-                <div class="bg-blue-900 text-white p-1.5 px-3 font-bold text-xs flex justify-between">
+                <div class="bg-blue-900 text-white p-1.5 px-3 font-bold text-xs flex justify-between items-center">
                   <span>${day}</span>
-                  <span class="text-[10px] text-amber-300">${daySchedules.length} Sesi</span>
+                  <span class="text-[10px] bg-amber-400 text-slate-900 px-1.5 py-0.2 rounded font-bold">${daySchedules.length} Sesi</span>
                 </div>
                 <div class="p-2 space-y-1.5 bg-slate-50 text-xs">
-                  ${daySchedules.length === 0 ? `<p class="text-[10px] text-slate-400 italic">Tidak ada jadwal belajar</p>` : ''}
+                  ${daySchedules.length === 0 ? `<p class="text-[10px] text-slate-400 italic p-1">Tidak ada jadwal belajar</p>` : ''}
                   ${daySchedules.map(s => {
                     const cls = dummyDB.classes.find(c => c.id === s.class_id);
+                    const teacher = dummyDB.users.find(u => u.id === s.teacher_id);
                     return `
-                      <div class="bg-white p-2 rounded border border-slate-200 shadow-2xs">
-                        <span class="text-[10px] font-bold text-blue-800">${s.start_time} - ${s.end_time}</span>
-                        <p class="font-bold text-slate-800">${cls ? cls.class_name : 'Kelas'}</p>
-                        <p class="text-[10px] text-slate-500"><i class="fa-solid fa-location-dot text-red-500"></i> ${s.room_name}</p>
+                      <div class="bg-white p-2.5 rounded-lg border border-slate-200 shadow-2xs">
+                        <div class="flex justify-between items-center">
+                          <span class="text-[10px] font-bold text-blue-800 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+                            <i class="fa-regular fa-clock mr-1"></i>${s.start_time} - ${s.end_time} WIB
+                          </span>
+                          <span class="text-[10px] text-slate-500 font-semibold"><i class="fa-solid fa-location-dot text-red-500 mr-1"></i>${s.room_name}</span>
+                        </div>
+                        <p class="font-bold text-slate-800 mt-1">${cls ? cls.class_name : 'Kelas'}</p>
+                        ${teacher ? `<p class="text-[10px] text-slate-500 mt-0.5"><i class="fa-solid fa-chalkboard-user text-blue-700 mr-1"></i>Pengajar: ${teacher.name}</p>` : ''}
                       </div>
                     `;
                   }).join('')}
