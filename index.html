@@ -1,0 +1,1812 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Sistem Informasi Bimbingan Belajar PWA</title>
+
+  <!-- Hidden Blogger Post Thumbnail (Agar postingan Blogger memiliki sampul gambar) -->
+  <div style="display:none !important; visibility:hidden !important; opacity:0; width:0; height:0; overflow:hidden;">
+    <img src="https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=800" alt="Bimbel App Thumbnail" />
+  </div>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- FontAwesome Icons CDN -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <script>
+    // =========================================================================
+    // KONFIGURASI KONEKSI GOOGLE SHEETS BACKEND
+    // =========================================================================
+    // Set IS_PREVIEW = false jika ingin terhubung SUNGGUHAN ke Google Sheets.
+    // Masukkan Web App URL hasil Deploy Google Apps Script pada GAS_URL.
+    const IS_PREVIEW = false; 
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbzdkzin-kDYQQfpocba8iuLIkTdkxp-5DLq5qfWCkaCN3BHblt2QfeQ9tUpU_vVOmYlbQ/exec"; 
+
+    // Configuration Default Whitelabel, CS WA & Rekening
+    window.APP_CONFIG = {
+      appName: "Bimbel Prestasi Digital",
+      appLogo: "https://cdn-icons-png.flaticon.com/512/3429/3429149.png",
+      primaryColor: "#1E40AF",
+      contactPhone: "6281234567890", // Format Internasional untuk WA tanpa tanda +
+      bankName: "Bank BCA",
+      bankAccount: "1234567890",
+      bankHolder: "Bimbel Prestasi Digital",
+      description: "Sistem Informasi Akademik, Kehadiran & Tagihan Bimbel"
+    };
+
+    // PWA Dynamic Manifest
+    const manifestJson = {
+      "short_name": "BimbelApp",
+      "name": window.APP_CONFIG.appName,
+      "icons": [
+        { "src": window.APP_CONFIG.appLogo, "type": "image/png", "sizes": "192x192" },
+        { "src": window.APP_CONFIG.appLogo, "type": "image/png", "sizes": "512x512" }
+      ],
+      "start_url": "./",
+      "background_color": "#FFFFFF",
+      "theme_color": window.APP_CONFIG.primaryColor,
+      "display": "standalone"
+    };
+    const blobManifest = new Blob([JSON.stringify(manifestJson)], { type: 'application/json' });
+    const manifestUrl = URL.createObjectURL(blobManifest);
+    const linkManifest = document.createElement('link');
+    linkManifest.rel = 'manifest';
+    linkManifest.href = manifestUrl;
+    document.head.appendChild(linkManifest);
+  </script>
+
+  <style>
+    /* Printable CSS Engine */
+    @media print {
+      body * { visibility: hidden; }
+      .printable, .printable * { visibility: visible; }
+      .printable { position: absolute; left: 0; top: 0; width: 100%; }
+      .no-print { display: none !important; }
+    }
+    
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    
+    .active-nav {
+      background-color: rgba(255, 255, 255, 0.15);
+      border-left: 4px solid #F59E0B;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans antialiased m-0 p-0 border-0">
+
+  <!-- Full-Page SPA Overlay Container (Zero XML Modification untuk Blogger) -->
+  <div id="blogger-app-overlay" class="fixed inset-0 z-[999999] bg-slate-100 flex flex-col overflow-y-auto font-sans antialiased">
+
+    <!-- PWA Install Prompt Banner -->
+    <div id="pwa-banner" class="hidden no-print bg-blue-900 text-white p-2.5 px-4 flex justify-between items-center shadow-md sticky top-0 z-50 text-xs">
+      <div class="flex items-center gap-2">
+        <img id="pwa-logo" src="" class="w-7 h-7 rounded-full bg-white p-0.5 object-contain" alt="Logo">
+        <div>
+          <p class="font-bold leading-tight">Instal Aplikasi Bimbel di HP</p>
+          <p class="text-[10px] text-blue-200">Akses cepat tanpa browser</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="installPWA()" class="bg-amber-400 hover:bg-amber-500 text-slate-900 font-bold px-3 py-1 rounded shadow text-xs">
+          <i class="fa-solid fa-download mr-1"></i> Instal
+        </button>
+        <button onclick="dismissPWA()" class="text-blue-200 hover:text-white p-1">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Login Screen -->
+    <div id="login-view" class="flex-1 flex items-center justify-center p-4">
+      <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden border border-slate-200">
+        <div class="bg-blue-800 p-6 text-center text-white">
+          <img id="login-logo" src="" class="w-16 h-16 mx-auto mb-2 bg-white rounded-2xl p-2 shadow object-contain" alt="Logo">
+          <h1 id="login-title" class="text-lg font-bold">Bimbel Prestasi Digital</h1>
+          <p class="text-xs text-blue-200 mt-0.5">Portal Admin, Guru & Orang Tua Wali</p>
+        </div>
+
+        <form id="login-form" onsubmit="handleLogin(event)" class="p-5 space-y-3.5">
+          <div id="login-alert" class="hidden p-2.5 rounded-lg text-xs font-semibold bg-red-100 text-red-700 border border-red-200"></div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Username</label>
+            <div class="relative">
+              <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 text-xs"><i class="fa-solid fa-user"></i></span>
+              <input type="text" id="username" required class="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:outline-none" placeholder="Masukkan username">
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Password</label>
+            <div class="relative">
+              <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 text-xs"><i class="fa-solid fa-lock"></i></span>
+              <input type="password" id="password" required class="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:outline-none" placeholder="••••••••">
+            </div>
+          </div>
+
+          <button type="submit" id="btn-login" class="w-full bg-blue-800 hover:bg-blue-900 text-white font-bold py-2.5 rounded-lg shadow transition text-xs flex justify-center items-center gap-2">
+            <span>Masuk Aplikasi</span>
+            <i class="fa-solid fa-arrow-right text-[10px]"></i>
+          </button>
+
+          <!-- Quick Demo Login Buttons -->
+          <div class="border-t border-slate-200 pt-3 mt-3">
+            <p class="text-[11px] text-slate-500 font-bold mb-1.5 text-center">Pilih Akun Demo (Klik Langsung):</p>
+            <div class="grid grid-cols-3 gap-1.5 text-[10px]">
+              <button type="button" onclick="fillLogin('admin', 'edudigital')" class="p-1.5 bg-slate-100 hover:bg-slate-200 rounded text-slate-700 font-bold border text-center">
+                🔑 Admin
+              </button>
+              <button type="button" onclick="fillLogin('guru', 'edudigital')" class="p-1.5 bg-slate-100 hover:bg-slate-200 rounded text-slate-700 font-bold border text-center">
+                👨‍🏫 Pengajar
+              </button>
+              <button type="button" onclick="fillLogin('ortu', 'edudigital')" class="p-1.5 bg-slate-100 hover:bg-slate-200 rounded text-slate-700 font-bold border text-center">
+                👨‍👩‍👧 Orang Tua
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Main App Shell -->
+    <div id="app-shell" class="hidden flex-1 flex flex-col md:flex-row min-h-screen">
+      <!-- Desktop Sidebar -->
+      <aside id="sidebar" class="bg-blue-900 text-white w-full md:w-60 flex-shrink-0 flex flex-col no-print hidden md:flex">
+        <div class="p-3.5 flex items-center gap-2.5 border-b border-blue-800">
+          <img id="side-logo" src="" class="w-9 h-9 bg-white rounded-lg p-1 object-contain" alt="Logo">
+          <div class="overflow-hidden">
+            <h2 id="side-app-name" class="font-bold text-xs truncate">Bimbel App</h2>
+            <span class="text-[9px] bg-amber-400 text-slate-900 px-1.5 py-0.2 rounded font-bold uppercase" id="side-user-role">Role</span>
+          </div>
+        </div>
+
+        <!-- Navigation Menu -->
+        <nav class="flex-1 p-2 space-y-1 text-xs overflow-y-auto" id="main-nav">
+        </nav>
+
+        <!-- Sidebar User Profile & CS WA -->
+        <div class="p-3 bg-blue-950 border-t border-blue-800 space-y-2">
+          <button onclick="openWhatsAppCS()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-1.5 px-2 rounded font-bold text-[11px] flex items-center justify-center gap-1.5 shadow">
+            <i class="fa-brands fa-whatsapp text-sm"></i> Call Center WA CS
+          </button>
+          <div class="flex items-center justify-between pt-1">
+            <div class="truncate">
+              <p class="text-xs font-bold text-white truncate" id="user-display-name">User Name</p>
+              <p class="text-[10px] text-blue-300 truncate" id="user-username">username</p>
+            </div>
+            <button onclick="handleLogout()" title="Keluar" class="text-blue-300 hover:text-red-400 p-1">
+              <i class="fa-solid fa-power-off text-sm"></i>
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Mobile Header -->
+      <header class="md:hidden bg-blue-900 text-white p-3 flex justify-between items-center shadow no-print sticky top-0 z-40">
+        <div class="flex items-center gap-2">
+          <img id="mobile-logo" src="" class="w-7 h-7 bg-white rounded p-0.5 object-contain" alt="Logo">
+          <div>
+            <h2 id="mobile-app-name" class="font-bold text-xs leading-none">Bimbel App</h2>
+            <span class="text-[9px] text-amber-300 font-bold uppercase" id="mobile-user-role">Role</span>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="openWhatsAppCS()" class="bg-emerald-600 text-white p-1.5 rounded-md text-xs font-bold flex items-center gap-1">
+            <i class="fa-brands fa-whatsapp"></i> CS WA
+          </button>
+          <button onclick="handleLogout()" class="text-xs bg-red-600 text-white px-2 py-1 rounded">
+            <i class="fa-solid fa-power-off"></i>
+          </button>
+        </div>
+      </header>
+
+      <!-- Main Content Area -->
+      <main class="flex-1 p-3.5 md:p-6 overflow-y-auto bg-slate-100 mb-14 md:mb-0">
+        <div id="view-dashboard" class="view-panel hidden space-y-4"></div>
+        <div id="view-attendance" class="view-panel hidden space-y-4"></div>
+        <div id="view-schedules" class="view-panel hidden space-y-4"></div>
+        <div id="view-modules" class="view-panel hidden space-y-4"></div>
+        <div id="view-assessments" class="view-panel hidden space-y-4"></div>
+        <div id="view-invoices" class="view-panel hidden space-y-4"></div>
+        <div id="view-users" class="view-panel hidden space-y-4"></div>
+        <div id="view-settings" class="view-panel hidden space-y-4"></div>
+      </main>
+
+      <!-- Mobile Bottom Navigation Bar -->
+      <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-lg flex justify-around p-1 z-40 no-print text-[10px]" id="mobile-nav">
+      </nav>
+    </div>
+
+    <!-- Reusable Universal Modal -->
+    <div id="app-modal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 z-50 no-print">
+      <div class="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden border border-slate-200 max-h-[90vh] flex flex-col text-xs">
+        <div class="bg-slate-100 p-3 border-b border-slate-200 flex justify-between items-center">
+          <h3 id="modal-title" class="font-bold text-slate-800 text-sm">Judul Modal</h3>
+          <button onclick="closeModal()" class="text-slate-400 hover:text-slate-600 p-1">
+            <i class="fa-solid fa-xmark text-base"></i>
+          </button>
+        </div>
+        <div id="modal-body" class="p-3.5 overflow-y-auto flex-1 space-y-3">
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // State Management
+    let currentUser = null;
+    let activeChildId = null;
+    let deferredInstallPrompt = null;
+    let chartInstance = null;
+
+    // Dummy Database State
+    let dummyDB = {
+      settings: { ...window.APP_CONFIG },
+      users: [
+        { id: "U001", name: "Administrator Bimbel", username: "admin", role: "admin", phone: "6281234567890" },
+        { id: "U002", name: "Budi Santoso, M.Pd", username: "guru", role: "teacher", phone: "6282222222222" },
+        { id: "U003", name: "Pak Hermawan (Orang Tua)", username: "ortu", role: "parent", phone: "6283333333333" }
+      ],
+      students: [
+        { id: "SST001", name: "Ananda Rizky Hermawan", parent_id: "U003", class_id: "C001" },
+        { id: "SST002", name: "Adinda Salsabila Hermawan", parent_id: "U003", class_id: "C002" }
+      ],
+      classes: [
+        { id: "C001", class_name: "10 SMA Reguler MIPA", description: "Fokus Kurikulum Merdeka & MIPA" },
+        { id: "C002", class_name: "12 SMA UTBK SNBT", description: "Bimbingan Eksklusif Persiapan PTN" }
+      ],
+      subjects: [
+        { id: "SUB001", subject_name: "Matematika IPA", description: "Matematika SMA & MIPA" },
+        { id: "SUB002", subject_name: "Fisika Dasar", description: "Fisika Mekanika & Dinamika" },
+        { id: "SUB003", subject_name: "TPS UTBK", description: "Tes Potensi Skolastik & Penalaran" }
+      ],
+      modules: [
+        { id: "M001", class_id: "C001", title: "Matematika : Persamaan Kuadrat & Fungsi", drive_url: "https://drive.google.com", created_at: "2026-09-10" },
+        { id: "M002", class_id: "C001", title: "Fisika : Hukum Newton & Dinamika Gerak", drive_url: "https://drive.google.com", created_at: "2026-09-12" },
+        { id: "M003", class_id: "C002", title: "TPS UTBK : Penalaran Matematika Super Cepat", drive_url: "https://drive.google.com", created_at: "2026-09-15" }
+      ],
+      schedules: [
+        { id: "SCH001", class_id: "C001", teacher_id: "U002", day: "Senin", start_time: "15:30", end_time: "17:00", room_name: "Ruang Rinjani (A1)" },
+        { id: "SCH002", class_id: "C001", teacher_id: "U002", day: "Rabu", start_time: "15:30", end_time: "17:00", room_name: "Ruang Rinjani (A1)" },
+        { id: "SCH003", class_id: "C002", teacher_id: "U002", day: "Selasa", start_time: "18:30", end_time: "20:00", room_name: "Ruang Bromo (Lab UTBK)" }
+      ],
+      attendances: [
+        { id: "ATT001", student_id: "SST001", date: "2026-09-21", status: "Hadir", notes: "Hadir tepat waktu" },
+        { id: "ATT002", student_id: "SST001", date: "2026-09-23", status: "Hadir", notes: "Aktif bertanya" },
+        { id: "ATT003", student_id: "SST002", date: "2026-09-22", status: "Izin", notes: "Ada kegiatan sekolah" }
+      ],
+      assessments: [
+        { id: "A001", student_id: "SST001", teacher_id: "U002", subject: "Matematika IPA", original_score: 65, is_remedial: true, remedial_score: 88, development_notes: "Progres bagus setelah pemantapan rumus.", date: "2026-09-10" },
+        { id: "A002", student_id: "SST001", teacher_id: "U002", subject: "Fisika Dasar", original_score: 85, is_remedial: false, remedial_score: null, development_notes: "Sangat baik memahami Hukum Newton.", date: "2026-09-18" },
+        { id: "A003", student_id: "SST001", teacher_id: "U002", subject: "Matematika IPA", original_score: 92, is_remedial: false, remedial_score: null, development_notes: "Nilai ujian bab 2 meningkat drastis.", date: "2026-09-24" },
+        { id: "A004", student_id: "SST002", teacher_id: "U002", subject: "TPS UTBK", original_score: 72, is_remedial: false, remedial_score: null, development_notes: "Tryout ke-3 Lolos Passing Grade PTN.", date: "2026-09-22" }
+      ],
+      invoices: [
+        { id: "INV-2026-001", student_id: "SST001", title: "SPP Bimbel September 2026", amount: 750000, due_date: "2026-10-05", status: "unpaid" },
+        { id: "INV-2026-002", student_id: "SST002", title: "SPP Intensif UTBK September 2026", amount: 1200000, due_date: "2026-09-30", status: "paid" }
+      ],
+      announcements: [
+        { id: "N001", title: "Selamat! 15 Siswa Lolos PTN Favorit 2026", description: "Prestasi membanggakan alumni siswa bimbel angkatan 2026 di PTN Impian.", image_url: "https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=600", link_url: "https://instagram.com", date: "2026-09-20" },
+        { id: "N002", title: "Tryout Akbar UTBK SNBT Gratis Minggu Ini", description: "Diikuti lebih dari 500 siswa se-kota. Jangan lewatkan pembahasannya!", image_url: "https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=600", link_url: "https://bimbel.id", date: "2026-09-24" }
+      ]
+    };
+
+    // Auto Load Saved Session on Reload / Refresh
+    document.addEventListener("DOMContentLoaded", async () => {
+      const savedUser = localStorage.getItem('bimbel_session_user');
+      if (savedUser) {
+        try {
+          currentUser = JSON.parse(savedUser);
+          await fetchAndRefreshData();
+          initAppShell();
+        } catch (e) {
+          localStorage.removeItem('bimbel_session_user');
+        }
+      }
+    });
+
+    // Dual-Mode Universal API Call (Mendukung google.script.run DAN HTTP Fetch POST untuk Blogger)
+    async function apiCall(action, data = {}) {
+      if (IS_PREVIEW) {
+        return new Promise((resolve) => {
+          setTimeout(() => { resolve(handleDummyApi(action, data)); }, 200);
+        });
+      }
+
+      // Opsi A: Jika dipanggil di lingkungan Google Apps Script Web App (Native iframe)
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        return new Promise((resolve, reject) => {
+          google.script.run
+            .withSuccessHandler(resolve)
+            .withFailureHandler((err) => {
+              console.error("GAS Execution Error:", err);
+              reject(err);
+            })[action](data);
+        });
+      }
+
+      // Opsi B: Jika dipasang di Blogger / Website Eksternal via HTTP POST Fetch ke Web App GAS
+      if (GAS_URL && GAS_URL !== "URL_DEPLOY_GAS_ANDA_DISINI") {
+        try {
+          const response = await fetch(GAS_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ action: action, data: data })
+          });
+          const res = await response.json();
+          return res;
+        } catch (err) {
+          console.error("Koneksi Google Sheets Error:", err);
+          showToast("Gagal terhubung ke Google Sheets Backend!");
+          throw err;
+        }
+      }
+
+      showToast("URL Web App GAS belum diisi!");
+      return { success: false, message: "Variabel GAS_URL belum dikonfigurasi dengan URL Web App Anda." };
+    }
+
+    function syncDataFromBackend(appData) {
+      if (!appData) return;
+
+      if (appData.settings && Array.isArray(appData.settings) && appData.settings.length > 0) {
+        const cfgObj = {};
+        appData.settings.forEach(item => {
+          if (item.key) cfgObj[item.key] = item.value;
+        });
+        window.APP_CONFIG = { ...window.APP_CONFIG, ...cfgObj };
+      }
+
+      if (appData.users) dummyDB.users = appData.users;
+      if (appData.students) dummyDB.students = appData.students;
+      if (appData.classes) dummyDB.classes = appData.classes;
+      if (appData.subjects) dummyDB.subjects = appData.subjects;
+      if (appData.modules) dummyDB.modules = appData.modules;
+      if (appData.schedules) dummyDB.schedules = appData.schedules;
+      if (appData.attendances) dummyDB.attendances = appData.attendances;
+      if (appData.assessments) dummyDB.assessments = appData.assessments;
+      if (appData.invoices) dummyDB.invoices = appData.invoices;
+      if (appData.announcements) dummyDB.announcements = appData.announcements;
+    }
+
+    async function fetchAndRefreshData() {
+      if (IS_PREVIEW) return;
+      try {
+        const res = await apiCall('getAppData');
+        if (res && res.users) {
+          syncDataFromBackend(res);
+        }
+      } catch (e) {
+        console.error("Gagal membaca database Google Sheets:", e);
+      }
+    }
+
+    function handleDummyApi(action, data) {
+      switch (action) {
+        case 'loginUser':
+          const user = dummyDB.users.find(u => u.username.toLowerCase() === data.username.toLowerCase());
+          if (user && (data.password === 'edudigital' || data.password === 'admin2026')) {
+            return { success: true, user: user };
+          }
+          return { success: false, message: "Username atau Password salah!" };
+
+        case 'saveSetting':
+          dummyDB.settings = { ...dummyDB.settings, ...data };
+          return { success: true };
+
+        case 'saveAnnouncement':
+          if (!data.id) data.id = "N" + String(dummyDB.announcements.length + 1).padStart(3, '0');
+          data.date = new Date().toISOString().split('T')[0];
+          dummyDB.announcements.unshift(data);
+          return { success: true };
+
+        case 'saveAttendance':
+          data.forEach(item => {
+            const idx = dummyDB.attendances.findIndex(a => a.student_id === item.student_id && a.date === item.date);
+            if (idx >= 0) dummyDB.attendances[idx] = item;
+            else {
+              item.id = "ATT" + String(dummyDB.attendances.length + 1).padStart(3, '0');
+              dummyDB.attendances.push(item);
+            }
+          });
+          return { success: true };
+
+        case 'saveUser':
+          if (!data.id) data.id = "U" + String(dummyDB.users.length + 1).padStart(3, '0');
+          const uIdx = dummyDB.users.findIndex(u => u.id === data.id);
+          if (uIdx >= 0) dummyDB.users[uIdx] = data; else dummyDB.users.push(data);
+          return { success: true };
+
+        case 'saveStudent':
+          if (!data.id) data.id = "SST" + String(dummyDB.students.length + 1).padStart(3, '0');
+          const sIdx = dummyDB.students.findIndex(s => s.id === data.id);
+          if (sIdx >= 0) dummyDB.students[sIdx] = data; else dummyDB.students.push(data);
+          return { success: true };
+
+        case 'saveSubject':
+          if (!data.id) data.id = "SUB" + String(dummyDB.subjects.length + 1).padStart(3, '0');
+          const subIdx = dummyDB.subjects.findIndex(s => s.id === data.id);
+          if (subIdx >= 0) dummyDB.subjects[subIdx] = data; else dummyDB.subjects.push(data);
+          return { success: true };
+
+        case 'saveModule':
+          if (!data.id) data.id = "M" + String(dummyDB.modules.length + 1).padStart(3, '0');
+          data.created_at = new Date().toISOString().split('T')[0];
+          dummyDB.modules.push(data);
+          return { success: true };
+
+        case 'saveSchedule':
+          if (!data.id) data.id = "SCH" + String(dummyDB.schedules.length + 1).padStart(3, '0');
+          dummyDB.schedules.push(data);
+          return { success: true };
+
+        case 'saveAssessment':
+          if (!data.id) data.id = "A" + String(dummyDB.assessments.length + 1).padStart(3, '0');
+          data.date = new Date().toISOString().split('T')[0];
+          dummyDB.assessments.push(data);
+          return { success: true };
+
+        case 'saveInvoice':
+          if (!data.id) data.id = "INV-2026-" + String(dummyDB.invoices.length + 1).padStart(3, '0');
+          dummyDB.invoices.push(data);
+          return { success: true };
+
+        case 'updateInvoiceStatus':
+          const inv = dummyDB.invoices.find(i => i.id === data.id);
+          if (inv) inv.status = data.status;
+          return { success: true };
+
+        default:
+          return { success: true };
+      }
+    }
+
+    function fillLogin(u, p) {
+      document.getElementById('username').value = u;
+      document.getElementById('password').value = p;
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const btn = document.getElementById('btn-login');
+      const alert = document.getElementById('login-alert');
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Checking...`;
+      alert.classList.add('hidden');
+
+      const uVal = document.getElementById('username').value.trim();
+      const pVal = document.getElementById('password').value.trim();
+
+      try {
+        const res = await apiCall('loginUser', { username: uVal, password: pVal });
+        if (res.success) {
+          currentUser = res.user;
+          if (res.appData) {
+            syncDataFromBackend(res.appData);
+          } else {
+            await fetchAndRefreshData();
+          }
+          localStorage.setItem('bimbel_session_user', JSON.stringify(currentUser));
+          initAppShell();
+        } else {
+          alert.textContent = res.message || "Username atau Password salah!";
+          alert.classList.remove('hidden');
+        }
+      } catch (err) {
+        alert.textContent = "Gagal menghubungkan ke database Google Sheets!";
+        alert.classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<span>Masuk Aplikasi</span><i class="fa-solid fa-arrow-right text-[10px]"></i>`;
+      }
+    }
+
+    function handleLogout() {
+      currentUser = null;
+      activeChildId = null;
+      localStorage.removeItem('bimbel_session_user');
+      document.getElementById('app-shell').classList.add('hidden');
+      document.getElementById('login-view').classList.remove('hidden');
+    }
+
+    function initAppShell() {
+      document.getElementById('login-view').classList.add('hidden');
+      document.getElementById('app-shell').classList.remove('hidden');
+
+      const cfg = window.APP_CONFIG;
+      document.getElementById('pwa-logo').src = cfg.appLogo;
+      document.getElementById('login-logo').src = cfg.appLogo;
+      document.getElementById('side-logo').src = cfg.appLogo;
+      document.getElementById('mobile-logo').src = cfg.appLogo;
+
+      document.getElementById('login-title').textContent = cfg.appName;
+      document.getElementById('side-app-name').textContent = cfg.appName;
+      document.getElementById('mobile-app-name').textContent = cfg.appName;
+
+      const roleLabels = { admin: 'Admin', teacher: 'Pengajar', parent: 'Orang Tua' };
+      document.getElementById('side-user-role').textContent = roleLabels[currentUser.role] || currentUser.role;
+      document.getElementById('mobile-user-role').textContent = roleLabels[currentUser.role] || currentUser.role;
+      document.getElementById('user-display-name').textContent = currentUser.name;
+      document.getElementById('user-username').textContent = "@" + currentUser.username;
+
+      setupParentChildData();
+      renderNavigationMenu();
+      navigateTo('dashboard');
+    }
+
+    function setupParentChildData() {
+      if (currentUser.role === 'parent') {
+        const myChildren = dummyDB.students.filter(s => s.parent_id === currentUser.id);
+        if (myChildren.length > 0) {
+          activeChildId = myChildren[0].id;
+        } else {
+          activeChildId = null;
+        }
+      } else {
+        activeChildId = null;
+      }
+    }
+
+    function openWhatsAppCS() {
+      const phone = window.APP_CONFIG.contactPhone.replace(/[^0-9]/g, '');
+      const msg = encodeURIComponent(`Halo CS ${window.APP_CONFIG.appName}, saya orang tua siswa ingin bertanya mengenai bimbingan belajar.`);
+      window.open(`https://wa.me/${phone}?text=${msg}`, '_blank');
+    }
+
+    function confirmPaymentWA(invId, title, amount, studentName) {
+      const phone = window.APP_CONFIG.contactPhone.replace(/[^0-9]/g, '');
+      const msg = `Halo CS ${window.APP_CONFIG.appName}, saya ingin konfirmasi pembayaran tagihan:\n\n` +
+                  `• *Nomor Invoice*: ${invId}\n` +
+                  `• *Tagihan*: ${title}\n` +
+                  `• *Nama Siswa*: ${studentName}\n` +
+                  `• *Nominal*: Rp ${Number(amount).toLocaleString('id-ID')}\n\n` +
+                  `Mohon diproses, bukti transfer sudah saya lampirkan. Terima kasih.`;
+      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
+    }
+
+    function renderNavigationMenu() {
+      const role = currentUser.role;
+      const navContainer = document.getElementById('main-nav');
+      const mobileNavContainer = document.getElementById('mobile-nav');
+
+      let menus = [{ id: 'dashboard', label: 'Dashboard', icon: 'fa-chart-pie' }];
+
+      if (role === 'admin') {
+        menus.push(
+          { id: 'attendance', label: 'Absensi Siswa', icon: 'fa-calendar-check' },
+          { id: 'schedules', label: 'Jadwal Belajar', icon: 'fa-calendar-days' },
+          { id: 'modules', label: 'Modul Belajar', icon: 'fa-folder-open' },
+          { id: 'assessments', label: 'Nilai Siswa', icon: 'fa-graduation-cap' },
+          { id: 'invoices', label: 'Tagihan SPP', icon: 'fa-receipt' },
+          { id: 'users', label: 'Pengguna & Siswa', icon: 'fa-users-gear' },
+          { id: 'settings', label: 'Pengaturan CS/SaaS', icon: 'fa-sliders' }
+        );
+      } else if (role === 'teacher') {
+        menus.push(
+          { id: 'attendance', label: 'Absensi Siswa', icon: 'fa-calendar-check' },
+          { id: 'schedules', label: 'Jadwal Belajar', icon: 'fa-calendar-days' },
+          { id: 'modules', label: 'Modul Belajar', icon: 'fa-folder-open' },
+          { id: 'assessments', label: 'Input Nilai', icon: 'fa-graduation-cap' }
+        );
+      } else if (role === 'parent') {
+        menus.push(
+          { id: 'attendance', label: 'Presensi Anak', icon: 'fa-calendar-check' },
+          { id: 'schedules', label: 'Jadwal Belajar', icon: 'fa-calendar-days' },
+          { id: 'modules', label: 'Modul Kelas Anak', icon: 'fa-book' },
+          { id: 'assessments', label: 'Nilai Anak', icon: 'fa-graduation-cap' },
+          { id: 'invoices', label: 'Tagihan SPP', icon: 'fa-receipt' }
+        );
+      }
+
+      navContainer.innerHTML = menus.map(m => `
+        <button onclick="navigateTo('${m.id}')" id="nav-btn-${m.id}" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-blue-100 hover:bg-blue-800 transition text-left">
+          <i class="fa-solid ${m.icon} w-4 text-center text-amber-400"></i>
+          <span class="font-semibold">${m.label}</span>
+        </button>
+      `).join('');
+
+      const mobileMenus = menus.slice(0, 5);
+      mobileNavContainer.innerHTML = mobileMenus.map(m => `
+        <button onclick="navigateTo('${m.id}')" id="mobile-btn-${m.id}" class="flex flex-col items-center justify-center py-1 px-2 text-slate-500">
+          <i class="fa-solid ${m.icon} text-base mb-0.5"></i>
+          <span class="text-[9px] font-bold">${m.label}</span>
+        </button>
+      `).join('');
+    }
+
+    function navigateTo(viewId) {
+      document.querySelectorAll('.view-panel').forEach(el => el.classList.add('hidden'));
+      
+      const target = document.getElementById(`view-${viewId}`);
+      if (target) {
+        target.classList.remove('hidden');
+        
+        document.querySelectorAll('#main-nav button').forEach(b => b.classList.remove('active-nav'));
+        const activeNav = document.getElementById(`nav-btn-${viewId}`);
+        if (activeNav) activeNav.classList.add('active-nav');
+
+        renderView(viewId);
+      }
+    }
+
+    function renderView(viewId) {
+      switch (viewId) {
+        case 'dashboard': renderDashboardView(); break;
+        case 'attendance': renderAttendanceView(); break;
+        case 'schedules': renderSchedulesView(); break;
+        case 'modules': renderModulesView(); break;
+        case 'assessments': renderAssessmentsView(); break;
+        case 'invoices': renderInvoicesView(); break;
+        case 'users': renderUsersView(); break;
+        case 'settings': renderSettingsView(); break;
+      }
+    }
+
+    function renderDashboardView() {
+      const container = document.getElementById('view-dashboard');
+      const studentObj = dummyDB.students.find(s => s.id === activeChildId) || { name: 'Siswa' };
+
+      if (currentUser.role === 'parent') {
+        const myAttendances = dummyDB.attendances.filter(a => a.student_id === studentObj.id);
+        const myInvoices = dummyDB.invoices.filter(i => i.student_id === studentObj.id);
+        const myAssessments = dummyDB.assessments.filter(a => a.student_id === studentObj.id);
+        const unpaid = myInvoices.filter(i => i.status === 'unpaid').length;
+
+        const chartLabels = myAssessments.map(a => `${a.subject.substring(0, 8)}.. (${a.date.substring(5)})`);
+        const chartScores = myAssessments.map(a => a.is_remedial && a.remedial_score ? a.remedial_score : a.original_score);
+
+        container.innerHTML = `
+          <div class="bg-gradient-to-r from-blue-900 to-indigo-800 rounded-xl p-4 text-white shadow">
+            <h2 class="text-base font-bold">Selamat Datang, ${currentUser.name}!</h2>
+            <p class="text-xs text-blue-200 mt-0.5">
+              Pantauan akademik untuk: <b class="text-amber-300">${studentObj.name}</b>
+            </p>
+          </div>
+
+          <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
+              <p class="text-[11px] font-bold text-slate-500">Total Presensi</p>
+              <h3 class="text-xl font-bold text-blue-700 mt-1">${myAttendances.length} Pertemuan</h3>
+            </div>
+            <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
+              <p class="text-[11px] font-bold text-slate-500">Tagihan SPP Belum Lunas</p>
+              <h3 class="text-xl font-bold ${unpaid > 0 ? 'text-red-600' : 'text-emerald-600'} mt-1">${unpaid} Tagihan</h3>
+            </div>
+            <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-xs col-span-2 md:col-span-1">
+              <p class="text-[11px] font-bold text-slate-500">Call Center Bimbel</p>
+              <button onclick="openWhatsAppCS()" class="mt-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1 rounded-lg flex items-center gap-1 shadow-xs">
+                <i class="fa-brands fa-whatsapp"></i> Chat Admin CS
+              </button>
+            </div>
+          </div>
+
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-2">
+            <div class="flex justify-between items-center">
+              <div>
+                <h3 class="text-xs font-bold text-slate-800"><i class="fa-solid fa-chart-line text-blue-800 mr-1"></i> Grafik Perkembangan Nilai Anak</h3>
+                <p class="text-[10px] text-slate-500">Perkembangan nilai hasil evaluasi & ujian</p>
+              </div>
+            </div>
+            <div class="h-44 w-full relative">
+              <canvas id="progressChart"></canvas>
+            </div>
+          </div>
+
+          ${renderAnnouncementsSection()}
+        `;
+
+        setTimeout(() => initDashboardChart(chartLabels, chartScores), 100);
+
+      } else {
+        container.innerHTML = `
+          <div class="flex justify-between items-center">
+            <h2 class="text-lg font-bold text-slate-800">Dashboard Utama</h2>
+            <span class="text-xs bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full font-bold">Tahun 2026/2027</span>
+          </div>
+
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
+              <p class="text-[11px] font-bold text-slate-500">Jumlah Siswa</p>
+              <h3 class="text-xl font-bold text-blue-800 mt-0.5">${dummyDB.students.length} Siswa</h3>
+            </div>
+            <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
+              <p class="text-[11px] font-bold text-slate-500">Total Kelas</p>
+              <h3 class="text-xl font-bold text-indigo-800 mt-0.5">${dummyDB.classes.length} Kelas</h3>
+            </div>
+            <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
+              <p class="text-[11px] font-bold text-slate-500">Tagihan Unpaid</p>
+              <h3 class="text-xl font-bold text-amber-600 mt-0.5">${dummyDB.invoices.filter(i => i.status === 'unpaid').length} Invoice</h3>
+            </div>
+            <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
+              <p class="text-[11px] font-bold text-slate-500">Modul Berkas</p>
+              <h3 class="text-xl font-bold text-emerald-700 mt-0.5">${dummyDB.modules.length} Modul</h3>
+            </div>
+          </div>
+
+          <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-2">
+            <h3 class="text-xs font-bold text-slate-800"><i class="fa-solid fa-chart-column text-blue-800 mr-1"></i> Ringkasan Perkembangan Evaluasi Siswa</h3>
+            <div class="h-44 w-full relative">
+              <canvas id="progressChart"></canvas>
+            </div>
+          </div>
+
+          ${renderAnnouncementsSection()}
+        `;
+
+        const allAssessments = dummyDB.assessments.slice(-6);
+        const chartLabels = allAssessments.map(a => `${a.subject.substring(0, 6)} (${a.date.substring(5)})`);
+        const chartScores = allAssessments.map(a => a.is_remedial && a.remedial_score ? a.remedial_score : a.original_score);
+        setTimeout(() => initDashboardChart(chartLabels, chartScores), 100);
+      }
+    }
+
+    function initDashboardChart(labels, scores) {
+      const ctx = document.getElementById('progressChart');
+      if (!ctx) return;
+      if (chartInstance) { chartInstance.destroy(); }
+      chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels.length > 0 ? labels : ['Belum Ada Data'],
+          datasets: [{
+            label: 'Nilai Siswa',
+            data: scores.length > 0 ? scores : [0],
+            borderColor: '#1E40AF',
+            backgroundColor: 'rgba(30, 64, 175, 0.1)',
+            borderWidth: 2.5,
+            fill: true,
+            tension: 0.35,
+            pointBackgroundColor: '#F59E0B',
+            pointRadius: 4.5
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { min: 0, max: 100, ticks: { font: { size: 10 } } },
+            x: { ticks: { font: { size: 10 } } }
+          }
+        }
+      });
+    }
+
+    function renderAnnouncementsSection() {
+      return `
+        <div class="space-y-3 pt-2">
+          <div class="flex justify-between items-center">
+            <div>
+              <h3 class="text-xs font-bold text-slate-800"><i class="fa-solid fa-bullhorn text-amber-500 mr-1"></i> Berita, Informasi & Prestasi Bimbel</h3>
+              <p class="text-[10px] text-slate-500">Informasi terbaru dan pengumuman resmi</p>
+            </div>
+            ${currentUser.role === 'admin' ? `
+              <button onclick="openAnnouncementModal()" class="bg-blue-800 hover:bg-blue-900 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg shadow-xs">
+                <i class="fa-solid fa-plus mr-1"></i> Tambah Berita
+              </button>
+            ` : ''}
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-3">
+            ${dummyDB.announcements.length === 0 ? `<div class="p-4 bg-white text-center text-xs text-slate-400 rounded-xl border">Belum ada berita atau informasi.</div>` : ''}
+            ${dummyDB.announcements.map(item => `
+              <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs flex flex-col justify-between">
+                <div>
+                  <img src="${item.image_url || 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?w=600'}" class="w-full h-28 object-cover" alt="Informasi">
+                  <div class="p-3">
+                    <span class="text-[9px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">${item.date || ''}</span>
+                    <h4 class="font-bold text-xs text-slate-800 mt-1">${item.title}</h4>
+                    <p class="text-[11px] text-slate-600 mt-1 line-clamp-2">${item.description}</p>
+                  </div>
+                </div>
+                ${item.link_url ? `
+                  <div class="p-3 pt-0">
+                    <a href="${item.link_url}" target="_blank" class="w-full bg-blue-50 text-blue-800 hover:bg-blue-800 hover:text-white transition py-1 px-2 rounded text-[11px] font-bold flex items-center justify-center gap-1 border border-blue-200">
+                      <span>Lihat Detail</span>
+                      <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
+                    </a>
+                  </div>
+                ` : ''}
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    function openAnnouncementModal() {
+      showModal('Tambah Berita / Informasi / Prestasi', `
+        <form onsubmit="saveAnnouncementForm(event)" class="space-y-3">
+          <div>
+            <label class="block font-bold mb-1">Judul Berita / Pengumuman</label>
+            <input type="text" id="n-title" required class="w-full p-2 border rounded text-xs" placeholder="misal: Selamat! 15 Siswa Lolos PTN">
+          </div>
+          <div>
+            <label class="block font-bold mb-1">URL Foto Header (PNG/JPG)</label>
+            <input type="url" id="n-image" required class="w-full p-2 border rounded text-xs" placeholder="https://images.unsplash.com/...">
+          </div>
+          <div>
+            <label class="block font-bold mb-1">Deskripsi Ringkas</label>
+            <textarea id="n-desc" required rows="3" class="w-full p-2 border rounded text-xs" placeholder="Tuliskan isi pengumuman/berita..."></textarea>
+          </div>
+          <div>
+            <label class="block font-bold mb-1">Link URL Detail (Opsional)</label>
+            <input type="url" id="n-link" class="w-full p-2 border rounded text-xs" placeholder="https://instagram.com/...">
+          </div>
+          <div class="pt-2 flex justify-end gap-2">
+            <button type="button" onclick="closeModal()" class="px-3 py-1 bg-slate-200 font-bold rounded">Batal</button>
+            <button type="submit" class="px-3 py-1 bg-blue-800 text-white font-bold rounded">Terbitkan Berita</button>
+          </div>
+        </form>
+      `);
+    }
+
+    async function saveAnnouncementForm(e) {
+      e.preventDefault();
+      await apiCall('saveAnnouncement', {
+        title: document.getElementById('n-title').value,
+        image_url: document.getElementById('n-image').value,
+        description: document.getElementById('n-desc').value,
+        link_url: document.getElementById('n-link').value || ''
+      });
+      closeModal();
+      await fetchAndRefreshData();
+      renderDashboardView();
+      showToast('Berita/Prestasi berhasil diterbitkan!');
+    }
+
+    function renderAttendanceView() {
+      const container = document.getElementById('view-attendance');
+      
+      if (currentUser.role === 'parent') {
+        const studentObj = dummyDB.students.find(s => s.id === activeChildId) || { name: 'Siswa' };
+        const myAttendances = dummyDB.attendances.filter(a => a.student_id === studentObj.id);
+
+        container.innerHTML = `
+          <div>
+            <h2 class="text-lg font-bold text-slate-800">Catatan Presensi & Kehadiran</h2>
+            <p class="text-xs text-slate-500">Riwayat kehadiran kelas: <b>${studentObj.name}</b></p>
+          </div>
+
+          <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
+            <div class="p-3 bg-slate-50 font-bold text-xs border-b border-slate-200 flex justify-between items-center">
+              <span>Riwayat Kehadiran Siswa</span>
+              <span class="text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded-full">${myAttendances.length} Catatan</span>
+            </div>
+            <div class="divide-y divide-slate-100 text-xs">
+              ${myAttendances.length === 0 ? `<p class="p-4 text-slate-400 italic text-center">Belum ada data absensi.</p>` : ''}
+              ${myAttendances.map(a => `
+                <div class="p-3 flex justify-between items-center">
+                  <div>
+                    <span class="font-bold text-slate-800"><i class="fa-regular fa-calendar-check text-blue-800 mr-1"></i>${a.date}</span>
+                    <p class="text-[10px] text-slate-500 mt-0.5">${a.notes || 'Tanpa catatan khusus'}</p>
+                  </div>
+                  <span class="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase shadow-2xs ${
+                    a.status === 'Hadir' ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' :
+                    a.status === 'Izin' ? 'bg-amber-100 text-amber-800 border border-amber-300' :
+                    a.status === 'Sakit' ? 'bg-blue-100 text-blue-800 border border-blue-300' : 'bg-red-100 text-red-800 border border-red-300'
+                  }">${a.status}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      } else {
+        container.innerHTML = `
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h2 class="text-lg font-bold text-slate-800">Input Absensi Kehadiran Siswa</h2>
+              <p class="text-xs text-slate-500">Pilih kelas & tanggal, lalu klik status kehadiran tiap siswa dengan cepat</p>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <button type="button" onclick="markAllAttendanceStatus('Hadir')" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow flex items-center gap-1 transition">
+                <i class="fa-solid fa-check-double text-xs"></i> Semua Hadir
+              </button>
+            </div>
+          </div>
+
+          <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs space-y-3.5">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div>
+                <label class="block font-bold mb-1 text-slate-700"><i class="fa-solid fa-calendar-day text-blue-800 mr-1"></i> Tanggal Absensi</label>
+                <input type="date" id="att-date" value="${new Date().toISOString().split('T')[0]}" class="w-full p-2 border border-slate-300 rounded-lg text-xs font-semibold">
+              </div>
+              <div>
+                <label class="block font-bold mb-1 text-slate-700"><i class="fa-solid fa-graduation-cap text-blue-800 mr-1"></i> Pilih Kelas</label>
+                <select id="att-class" onchange="filterAttendanceStudents()" class="w-full p-2 border border-slate-300 rounded-lg text-xs font-semibold">
+                  ${dummyDB.classes.map(c => `<option value="${c.id}">${c.class_name}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+
+            <div class="border-t border-slate-100 pt-3">
+              <div class="flex justify-between items-center mb-2 px-1">
+                <span class="text-xs font-bold text-slate-700"><i class="fa-solid fa-users mr-1 text-blue-800"></i> Daftar Siswa Kelas</span>
+                <span id="attendance-count-badge" class="text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded-full">0 Siswa</span>
+              </div>
+              <div id="attendance-student-list" class="space-y-2.5">
+              </div>
+            </div>
+
+            <button onclick="saveAttendanceData()" class="w-full bg-blue-800 hover:bg-blue-900 text-white font-bold py-2.5 rounded-lg shadow transition text-xs flex justify-center items-center gap-2 mt-4">
+              <i class="fa-solid fa-floppy-disk text-sm"></i>
+              <span>Simpan Presensi Kehadiran Kelas</span>
+            </button>
+          </div>
+        `;
+        filterAttendanceStudents();
+      }
+    }
+
+    function filterAttendanceStudents() {
+      const classId = document.getElementById('att-class').value;
+      const listContainer = document.getElementById('attendance-student-list');
+      const badgeContainer = document.getElementById('attendance-count-badge');
+      const filteredStudents = dummyDB.students.filter(s => s.class_id === classId);
+
+      if (badgeContainer) badgeContainer.textContent = `${filteredStudents.length} Siswa`;
+
+      if (filteredStudents.length === 0) {
+        listContainer.innerHTML = `
+          <div class="p-6 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
+            <i class="fa-solid fa-user-slash text-2xl text-slate-300 mb-1 block"></i>
+            <p class="text-xs text-slate-500 font-medium">Belum ada siswa yang terdaftar di kelas ini.</p>
+          </div>
+        `;
+        return;
+      }
+
+      listContainer.innerHTML = filteredStudents.map((s, idx) => `
+        <div class="p-3 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-slate-200 transition flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-xs flex-shrink-0">
+              ${idx + 1}
+            </div>
+            <div>
+              <p class="font-bold text-xs text-slate-800 leading-tight">${s.name}</p>
+              <input type="text" id="att-notes-${s.id}" placeholder="Catatan/Alasan (Opsional)" class="text-[11px] p-1.5 px-2 bg-white border border-slate-200 rounded-md w-full sm:w-56 mt-1 focus:ring-1 focus:ring-blue-500 focus:outline-none">
+              <input type="hidden" id="att-status-${s.id}" value="Hadir">
+            </div>
+          </div>
+
+          <div class="flex items-center gap-1 self-end sm:self-center">
+            <button type="button" id="btn-att-${s.id}-Hadir" onclick="setStudentStatus('${s.id}', 'Hadir')" class="att-pill-btn font-bold px-2.5 py-1 rounded-lg text-[11px] border transition bg-emerald-600 text-white border-emerald-600 shadow-xs">
+              <i class="fa-solid fa-check mr-0.5"></i> Hadir
+            </button>
+            <button type="button" id="btn-att-${s.id}-Izin" onclick="setStudentStatus('${s.id}', 'Izin')" class="att-pill-btn font-bold px-2.5 py-1 rounded-lg text-[11px] border transition bg-white text-slate-600 border-slate-300 hover:bg-amber-50">
+              Izin
+            </button>
+            <button type="button" id="btn-att-${s.id}-Sakit" onclick="setStudentStatus('${s.id}', 'Sakit')" class="att-pill-btn font-bold px-2.5 py-1 rounded-lg text-[11px] border transition bg-white text-slate-600 border-slate-300 hover:bg-blue-50">
+              Sakit
+            </button>
+            <button type="button" id="btn-att-${s.id}-Alfa" onclick="setStudentStatus('${s.id}', 'Alfa')" class="att-pill-btn font-bold px-2.5 py-1 rounded-lg text-[11px] border transition bg-white text-slate-600 border-slate-300 hover:bg-red-50">
+              Alfa
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function setStudentStatus(studentId, status) {
+      const hiddenInput = document.getElementById(`att-status-${studentId}`);
+      if (hiddenInput) hiddenInput.value = status;
+
+      const statuses = ['Hadir', 'Izin', 'Sakit', 'Alfa'];
+      const styles = {
+        Hadir: 'bg-emerald-600 text-white border-emerald-600 shadow-xs',
+        Izin: 'bg-amber-500 text-white border-amber-500 shadow-xs',
+        Sakit: 'bg-blue-600 text-white border-blue-600 shadow-xs',
+        Alfa: 'bg-red-600 text-white border-red-600 shadow-xs',
+        Inactive: 'bg-white text-slate-600 border-slate-300'
+      };
+
+      statuses.forEach(st => {
+        const btn = document.getElementById(`btn-att-${studentId}-${st}`);
+        if (btn) {
+          btn.className = `att-pill-btn font-bold px-2.5 py-1 rounded-lg text-[11px] border transition ${
+            st === status ? styles[st] : styles.Inactive
+          }`;
+        }
+      });
+    }
+
+    function markAllAttendanceStatus(status) {
+      const classId = document.getElementById('att-class').value;
+      const filteredStudents = dummyDB.students.filter(s => s.class_id === classId);
+      filteredStudents.forEach(s => { setStudentStatus(s.id, status); });
+      showToast(`Semua siswa ditandai '${status}'`);
+    }
+
+    async function saveAttendanceData() {
+      const dateVal = document.getElementById('att-date').value;
+      const classId = document.getElementById('att-class').value;
+      const filteredStudents = dummyDB.students.filter(s => s.class_id === classId);
+
+      if (filteredStudents.length === 0) {
+        showToast('Tidak ada siswa untuk disimpan!');
+        return;
+      }
+
+      const records = filteredStudents.map(s => {
+        const statusEl = document.getElementById(`att-status-${s.id}`);
+        const notesEl = document.getElementById(`att-notes-${s.id}`);
+        return {
+          student_id: s.id,
+          date: dateVal,
+          status: statusEl ? statusEl.value : 'Hadir',
+          notes: notesEl ? notesEl.value : ''
+        };
+      });
+
+      await apiCall('saveAttendance', records);
+      await fetchAndRefreshData();
+      showToast('Presensi Kehadiran Berhasil Disimpan ke Sheet!');
+    }
+
+    function renderSchedulesView(filterClassId = null) {
+      const container = document.getElementById('view-schedules');
+      
+      if (currentUser.role === 'parent' && activeChildId && !filterClassId) {
+        const studentObj = dummyDB.students.find(s => s.id === activeChildId);
+        if (studentObj) filterClassId = studentObj.class_id;
+      }
+
+      let selectedClassFilter = filterClassId || 'ALL';
+      let filteredSchedules = dummyDB.schedules;
+
+      if (selectedClassFilter !== 'ALL') {
+        filteredSchedules = dummyDB.schedules.filter(s => s.class_id === selectedClassFilter);
+      }
+
+      container.innerHTML = `
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 no-print">
+          <div>
+            <h2 class="text-lg font-bold text-slate-800">Jadwal Kelas Belajar</h2>
+            <p class="text-xs text-slate-500">Pilih filter kelas agar jadwal tidak tertukar</p>
+          </div>
+          <div class="flex items-center gap-2">
+            ${currentUser.role === 'admin' ? `
+              <button onclick="openScheduleModal()" class="bg-blue-800 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow">
+                <i class="fa-solid fa-plus"></i> Tambah Jadwal
+              </button>
+            ` : ''}
+            <button onclick="window.print()" class="bg-amber-500 text-slate-900 text-xs font-bold px-3 py-1.5 rounded-lg shadow">
+              <i class="fa-solid fa-print"></i> Cetak
+            </button>
+          </div>
+        </div>
+
+        <div class="bg-white p-2.5 rounded-xl border border-slate-200 flex items-center gap-2 text-xs no-print">
+          <span class="font-bold text-slate-700 whitespace-nowrap"><i class="fa-solid fa-filter text-blue-800"></i> Filter Kelas:</span>
+          <select id="schedule-class-filter" onchange="renderSchedulesView(this.value)" class="w-full bg-slate-50 p-1.5 rounded border border-slate-300 font-semibold text-slate-800">
+            <option value="ALL" ${selectedClassFilter === 'ALL' ? 'selected' : ''}>-- Semua Kelas Bimbel --</option>
+            ${dummyDB.classes.map(c => `<option value="${c.id}" ${selectedClassFilter === c.id ? 'selected' : ''}>${c.class_name}</option>`).join('')}
+          </select>
+        </div>
+
+        <div class="printable grid md:grid-cols-2 gap-3 bg-white p-3 rounded-xl border border-slate-200">
+          ${['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'].map(day => {
+            const daySchedules = filteredSchedules.filter(s => s.day === day);
+            return `
+              <div class="border border-slate-200 rounded-lg overflow-hidden">
+                <div class="bg-blue-900 text-white p-1.5 px-3 font-bold text-xs flex justify-between">
+                  <span>${day}</span>
+                  <span class="text-[10px] text-amber-300">${daySchedules.length} Sesi</span>
+                </div>
+                <div class="p-2 space-y-1.5 bg-slate-50 text-xs">
+                  ${daySchedules.length === 0 ? `<p class="text-[10px] text-slate-400 italic">Tidak ada jadwal belajar</p>` : ''}
+                  ${daySchedules.map(s => {
+                    const cls = dummyDB.classes.find(c => c.id === s.class_id);
+                    return `
+                      <div class="bg-white p-2 rounded border border-slate-200 shadow-2xs">
+                        <span class="text-[10px] font-bold text-blue-800">${s.start_time} - ${s.end_time}</span>
+                        <p class="font-bold text-slate-800">${cls ? cls.class_name : 'Kelas'}</p>
+                        <p class="text-[10px] text-slate-500"><i class="fa-solid fa-location-dot text-red-500"></i> ${s.room_name}</p>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    function openScheduleModal() {
+      showModal('Tambah Jadwal Belajar Baru', `
+        <form onsubmit="saveScheduleForm(event)" class="space-y-3">
+          <div>
+            <label class="block font-bold mb-1">Pilih Kelas</label>
+            <select id="sch-class" class="w-full p-2 border rounded text-xs">
+              ${dummyDB.classes.map(c => `<option value="${c.id}">${c.class_name}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label class="block font-bold mb-1">Hari</label>
+            <select id="sch-day" class="w-full p-2 border rounded text-xs">
+              <option value="Senin">Senin</option><option value="Selasa">Selasa</option>
+              <option value="Rabu">Rabu</option><option value="Kamis">Kamis</option>
+              <option value="Jumat">Jumat</option><option value="Sabtu">Sabtu</option>
+            </select>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block font-bold mb-1">Jam Mulai</label>
+              <input type="time" id="sch-start" required class="w-full p-2 border rounded text-xs">
+            </div>
+            <div>
+              <label class="block font-bold mb-1">Jam Selesai</label>
+              <input type="time" id="sch-end" required class="w-full p-2 border rounded text-xs">
+            </div>
+          </div>
+          <div>
+            <label class="block font-bold mb-1">Ruangan / Kelas</label>
+            <input type="text" id="sch-room" required class="w-full p-2 border rounded text-xs" placeholder="misal: Ruang Rinjani (A1)">
+          </div>
+          <div class="pt-2 flex justify-end gap-2">
+            <button type="button" onclick="closeModal()" class="px-3 py-1 bg-slate-200 font-bold rounded">Batal</button>
+            <button type="submit" class="px-3 py-1 bg-blue-800 text-white font-bold rounded">Simpan Jadwal</button>
+          </div>
+        </form>
+      `);
+    }
+
+    async function saveScheduleForm(e) {
+      e.preventDefault();
+      await apiCall('saveSchedule', {
+        class_id: document.getElementById('sch-class').value,
+        teacher_id: currentUser.id,
+        day: document.getElementById('sch-day').value,
+        start_time: document.getElementById('sch-start').value,
+        end_time: document.getElementById('sch-end').value,
+        room_name: document.getElementById('sch-room').value
+      });
+      closeModal();
+      await fetchAndRefreshData();
+      renderSchedulesView();
+      showToast("Jadwal Berhasil Disimpan!");
+    }
+
+    function renderModulesView(filterClassId = null) {
+      const container = document.getElementById('view-modules');
+      
+      if (currentUser.role === 'parent' && activeChildId && !filterClassId) {
+        const studentObj = dummyDB.students.find(s => s.id === activeChildId);
+        if (studentObj) filterClassId = studentObj.class_id;
+      }
+
+      let selectedClassFilter = filterClassId || 'ALL';
+      let displayModules = dummyDB.modules;
+
+      if (selectedClassFilter !== 'ALL') {
+        displayModules = dummyDB.modules.filter(m => m.class_id === selectedClassFilter);
+      }
+
+      container.innerHTML = `
+        <div class="flex justify-between items-center">
+          <div>
+            <h2 class="text-lg font-bold text-slate-800">Modul & Materi Belajar</h2>
+            <p class="text-xs text-slate-500">Materi resmi bimbel terorganisir per kelas</p>
+          </div>
+          ${currentUser.role === 'admin' || currentUser.role === 'teacher' ? `
+            <button onclick="openModuleModal()" class="bg-blue-800 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow">
+              <i class="fa-solid fa-plus"></i> Tambah Modul
+            </button>
+          ` : ''}
+        </div>
+
+        <div class="bg-white p-2.5 rounded-xl border border-slate-200 flex items-center gap-2 text-xs">
+          <span class="font-bold text-slate-700 whitespace-nowrap"><i class="fa-solid fa-filter text-blue-800"></i> Filter Kelas:</span>
+          <select id="module-class-filter" onchange="renderModulesView(this.value)" class="w-full bg-slate-50 p-1.5 rounded border border-slate-300 font-semibold text-slate-800">
+            <option value="ALL" ${selectedClassFilter === 'ALL' ? 'selected' : ''}>-- Semua Modul Kelas --</option>
+            ${dummyDB.classes.map(c => `<option value="${c.id}" ${selectedClassFilter === c.id ? 'selected' : ''}>${c.class_name}</option>`).join('')}
+          </select>
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-3">
+          ${displayModules.length === 0 ? `<div class="col-span-2 bg-white p-4 text-center text-xs text-slate-400 rounded-xl border">Tidak ada modul untuk kelas terpilih.</div>` : ''}
+          ${displayModules.map(m => {
+            const cls = dummyDB.classes.find(c => c.id === m.class_id);
+            return `
+              <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex justify-between items-center">
+                <div>
+                  <span class="text-[9px] bg-blue-100 text-blue-800 px-1.5 py-0.2 rounded font-bold">${cls ? cls.class_name : 'Kelas'}</span>
+                  <h3 class="text-xs font-bold text-slate-800 mt-1">${m.title}</h3>
+                  <p class="text-[10px] text-slate-400 mt-0.5"><i class="fa-regular fa-calendar"></i> ${m.created_at}</p>
+                </div>
+                <a href="${m.drive_url}" target="_blank" class="bg-blue-50 text-blue-800 hover:bg-blue-800 hover:text-white px-2.5 py-1.5 rounded-lg border border-blue-200 text-xs font-bold transition">
+                  <i class="fa-solid fa-arrow-up-right-from-square"></i> Buka
+                </a>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    function openModuleModal() {
+      showModal('Unggah Tautan Modul Belajar', `
+        <form onsubmit="saveModuleForm(event)" class="space-y-3">
+          <div>
+            <label class="block font-bold mb-1">Target Kelas</label>
+            <select id="mod-class" class="w-full p-2 border rounded text-xs">
+              ${dummyDB.classes.map(c => `<option value="${c.id}">${c.class_name}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label class="block font-bold mb-1">Judul Modul / Materi</label>
+            <input type="text" id="mod-title" required class="w-full p-2 border rounded text-xs" placeholder="misal: Fisika - Hukum Newton">
+          </div>
+          <div>
+            <label class="block font-bold mb-1">URL Link Google Drive / File</label>
+            <input type="url" id="mod-url" required class="w-full p-2 border rounded text-xs" placeholder="https://drive.google.com/...">
+          </div>
+          <div class="pt-2 flex justify-end gap-2">
+            <button type="button" onclick="closeModal()" class="px-3 py-1 bg-slate-200 font-bold rounded">Batal</button>
+            <button type="submit" class="px-3 py-1 bg-blue-800 text-white font-bold rounded">Simpan Modul</button>
+          </div>
+        </form>
+      `);
+    }
+
+    async function saveModuleForm(e) {
+      e.preventDefault();
+      await apiCall('saveModule', {
+        class_id: document.getElementById('mod-class').value,
+        title: document.getElementById('mod-title').value,
+        drive_url: document.getElementById('mod-url').value
+      });
+      closeModal();
+      await fetchAndRefreshData();
+      renderModulesView();
+      showToast("Modul Belajar Berhasil Disimpan!");
+    }
+
+    function renderAssessmentsView() {
+      const container = document.getElementById('view-assessments');
+
+      if (currentUser.role === 'parent') {
+        const studentObj = dummyDB.students.find(s => s.id === activeChildId) || { name: 'Siswa' };
+        const myAssessments = dummyDB.assessments.filter(a => a.student_id === studentObj.id);
+
+        container.innerHTML = `
+          <div>
+            <h2 class="text-lg font-bold text-slate-800">Evaluasi & Nilai Belajar</h2>
+            <p class="text-xs text-slate-500">Hasil evaluasi belajar untuk: <b>${studentObj.name}</b></p>
+          </div>
+
+          <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
+            <div class="p-3 bg-slate-50 font-bold text-xs border-b border-slate-200">Daftar Nilai & Catatan Evaluasi</div>
+            <div class="divide-y divide-slate-100 text-xs">
+              ${myAssessments.length === 0 ? `<p class="p-4 text-slate-400 italic text-center">Belum ada catatan nilai.</p>` : ''}
+              ${myAssessments.map(a => `
+                <div class="p-3.5 space-y-1">
+                  <div class="flex justify-between items-start">
+                    <div>
+                      <span class="text-[10px] text-blue-800 font-bold block">${a.subject}</span>
+                      <span class="text-[9px] text-slate-400">${a.date}</span>
+                    </div>
+                    <div class="text-right">
+                      <span class="text-base font-extrabold ${a.original_score >= 75 ? 'text-emerald-600' : 'text-amber-600'}">${a.original_score}</span>
+                      ${a.is_remedial ? `<span class="block text-[9px] text-indigo-600 font-bold">(Remidi: ${a.remedial_score})</span>` : ''}
+                    </div>
+                  </div>
+                  ${a.development_notes ? `<p class="text-[11px] text-slate-600 bg-slate-50 p-2 rounded border border-slate-100 mt-1">💬 ${a.development_notes}</p>` : ''}
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      } else {
+        container.innerHTML = `
+          <div class="flex justify-between items-center">
+            <div>
+              <h2 class="text-lg font-bold text-slate-800">Pencatatan Evaluasi Nilai</h2>
+              <p class="text-xs text-slate-500">Input nilai, status remidi & catatan perkembangan</p>
+            </div>
+          </div>
+
+          <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs max-w-lg">
+            <form onsubmit="saveAssessmentForm(event)" class="space-y-3 text-xs">
+              <div>
+                <label class="block font-bold mb-1">Pilih Siswa</label>
+                <select id="ass-student" class="w-full p-2 border rounded text-xs">
+                  ${dummyDB.students.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                </select>
+              </div>
+              <div>
+                <label class="block font-bold mb-1">Mata Pelajaran</label>
+                <select id="ass-subject" class="w-full p-2 border rounded text-xs">
+                  ${dummyDB.subjects.map(s => `<option value="${s.subject_name}">${s.subject_name}</option>`).join('')}
+                </select>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="block font-bold mb-1">Nilai Evaluasi (0-100)</label>
+                  <input type="number" min="0" max="100" id="ass-score" required class="w-full p-2 border rounded text-xs">
+                </div>
+                <div>
+                  <label class="block font-bold mb-1">Status Remidi</label>
+                  <select id="ass-remedial" onchange="toggleRemedialInput(this.value)" class="w-full p-2 border rounded text-xs">
+                    <option value="false">Tidak Remidi</option>
+                    <option value="true">Remidi</option>
+                  </select>
+                </div>
+              </div>
+              <div id="remedial-score-box" class="hidden">
+                <label class="block font-bold mb-1 text-indigo-700">Nilai Setelah Remidi</label>
+                <input type="number" min="0" max="100" id="ass-rem-score" class="w-full p-2 border border-indigo-300 rounded text-xs">
+              </div>
+              <div>
+                <label class="block font-bold mb-1">Catatan Perkembangan Siswa</label>
+                <textarea id="ass-notes" rows="2" class="w-full p-2 border rounded text-xs" placeholder="misal: Pemahaman bab 1 sangat baik."></textarea>
+              </div>
+              <button type="submit" class="w-full bg-blue-800 text-white font-bold py-2 rounded-lg shadow">
+                <i class="fa-solid fa-floppy-disk mr-1"></i> Simpan Nilai Evaluasi
+              </button>
+            </form>
+          </div>
+        `;
+      }
+    }
+
+    function toggleRemedialInput(val) {
+      const box = document.getElementById('remedial-score-box');
+      if (val === 'true') box.classList.remove('hidden');
+      else box.classList.add('hidden');
+    }
+
+    async function saveAssessmentForm(e) {
+      e.preventDefault();
+      const isRem = document.getElementById('ass-remedial').value === 'true';
+      await apiCall('saveAssessment', {
+        student_id: document.getElementById('ass-student').value,
+        teacher_id: currentUser.id,
+        subject: document.getElementById('ass-subject').value,
+        original_score: parseFloat(document.getElementById('ass-score').value),
+        is_remedial: isRem,
+        remedial_score: isRem ? parseFloat(document.getElementById('ass-rem-score').value) : null,
+        development_notes: document.getElementById('ass-notes').value
+      });
+      await fetchAndRefreshData();
+      showToast('Nilai Evaluasi Berhasil Disimpan!');
+      renderAssessmentsView();
+    }
+
+    function renderInvoicesView(filterClassId = null) {
+      const container = document.getElementById('view-invoices');
+      const cfg = window.APP_CONFIG;
+      let filteredInvoices = dummyDB.invoices;
+
+      if (currentUser.role === 'parent' && activeChildId) {
+        filteredInvoices = dummyDB.invoices.filter(i => i.student_id === activeChildId);
+      } else if (filterClassId && filterClassId !== 'ALL') {
+        const studentIdsInClass = dummyDB.students.filter(s => s.class_id === filterClassId).map(s => s.id);
+        filteredInvoices = dummyDB.invoices.filter(i => studentIdsInClass.includes(i.student_id));
+      }
+
+      container.innerHTML = `
+        <div class="flex justify-between items-center no-print">
+          <div>
+            <h2 class="text-lg font-bold text-slate-800">Tagihan & SPP Bimbel</h2>
+            <p class="text-xs text-slate-500">Informasi pembayaran & nomor rekening</p>
+          </div>
+          ${currentUser.role === 'admin' ? `
+            <button onclick="openInvoiceModal()" class="bg-blue-800 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow">
+              <i class="fa-solid fa-plus"></i> Buat Tagihan
+            </button>
+          ` : ''}
+        </div>
+
+        ${currentUser.role === 'admin' ? `
+          <div class="bg-white p-2.5 rounded-xl border border-slate-200 flex items-center gap-2 text-xs no-print">
+            <span class="font-bold text-slate-700 whitespace-nowrap"><i class="fa-solid fa-filter text-blue-800"></i> Filter Kelas:</span>
+            <select id="invoice-class-filter" onchange="renderInvoicesView(this.value)" class="w-full bg-slate-50 p-1.5 rounded border border-slate-300 font-semibold text-slate-800">
+              <option value="ALL" ${!filterClassId || filterClassId === 'ALL' ? 'selected' : ''}>-- Semua Tagihan Kelas --</option>
+              ${dummyDB.classes.map(c => `<option value="${c.id}" ${filterClassId === c.id ? 'selected' : ''}>${c.class_name}</option>`).join('')}
+            </select>
+          </div>
+        ` : ''}
+
+        <div class="bg-gradient-to-r from-blue-900 to-indigo-900 text-white p-3.5 rounded-xl shadow-xs text-xs space-y-2">
+          <div class="flex items-center gap-2 font-bold text-amber-300">
+            <i class="fa-solid fa-building-columns text-base"></i>
+            <span>Nomor Rekening Pembayaran SPP Bimbel</span>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-white/10 p-2.5 rounded-lg border border-white/10">
+            <div>
+              <span class="text-[10px] text-blue-200 block uppercase font-semibold">Nama Bank</span>
+              <span class="font-bold text-white">${cfg.bankName || '-'}</span>
+            </div>
+            <div>
+              <span class="text-[10px] text-blue-200 block uppercase font-semibold">Nomor Rekening</span>
+              <span class="font-mono font-extrabold text-amber-300 text-sm">${cfg.bankAccount || '-'}</span>
+            </div>
+            <div>
+              <span class="text-[10px] text-blue-200 block uppercase font-semibold">Atas Nama</span>
+              <span class="font-bold text-white">${cfg.bankHolder || '-'}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-3">
+          ${filteredInvoices.map(inv => {
+            const st = dummyDB.students.find(s => s.id === inv.student_id);
+            return `
+              <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
+                <div>
+                  <div class="flex justify-between items-start text-xs">
+                    <span class="font-mono text-slate-500 font-bold">${inv.id}</span>
+                    <span class="px-2 py-0.2 rounded text-[9px] font-bold uppercase ${inv.status === 'paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}">${inv.status}</span>
+                  </div>
+                  <h3 class="text-xs font-bold text-slate-800 mt-1">${inv.title}</h3>
+                  <p class="text-[11px] text-slate-500">Siswa: ${st ? st.name : '-'}</p>
+                  <p class="text-base font-extrabold text-blue-900 mt-1">Rp ${Number(inv.amount).toLocaleString('id-ID')}</p>
+                </div>
+
+                <div class="mt-3 space-y-1">
+                  ${inv.status === 'unpaid' ? `
+                    <button onclick="confirmPaymentWA('${inv.id}', '${inv.title}', ${inv.amount}, '${st ? st.name : 'Siswa'}')" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold py-1.5 rounded-lg flex items-center justify-center gap-1.5 shadow-xs transition">
+                      <i class="fa-brands fa-whatsapp text-sm"></i> Konfirmasi Pembayaran via WA
+                    </button>
+                  ` : ''}
+
+                  ${currentUser.role === 'admin' && inv.status !== 'paid' ? `
+                    <button onclick="markInvoicePaid('${inv.id}')" class="w-full bg-blue-800 hover:bg-blue-900 text-white text-[10px] font-bold py-1 rounded">
+                      <i class="fa-solid fa-circle-check mr-1"></i> Tandai Lunas (Admin)
+                    </button>
+                  ` : ''}
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    function openInvoiceModal() {
+      showModal('Buat Tagihan SPP', `
+        <form onsubmit="saveInvoiceForm(event)" class="space-y-3">
+          <div>
+            <label class="block font-bold mb-1">Target Siswa</label>
+            <select id="inv-student" class="w-full p-2 border rounded text-xs">
+              ${dummyDB.students.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label class="block font-bold mb-1">Deskripsi Tagihan</label>
+            <input type="text" id="inv-title" required class="w-full p-2 border rounded text-xs" placeholder="misal: SPP Oktober 2026">
+          </div>
+          <div>
+            <label class="block font-bold mb-1">Nominal (Rp)</label>
+            <input type="number" id="inv-amount" required class="w-full p-2 border rounded text-xs" placeholder="750000">
+          </div>
+          <div>
+            <label class="block font-bold mb-1">Jatuh Tempo</label>
+            <input type="date" id="inv-due" required class="w-full p-2 border rounded text-xs">
+          </div>
+          <div class="pt-2 flex justify-end gap-2">
+            <button type="button" onclick="closeModal()" class="px-3 py-1 bg-slate-200 font-bold rounded">Batal</button>
+            <button type="submit" class="px-3 py-1 bg-blue-800 text-white font-bold rounded">Terbitkan</button>
+          </div>
+        </form>
+      `);
+    }
+
+    async function saveInvoiceForm(e) {
+      e.preventDefault();
+      await apiCall('saveInvoice', {
+        student_id: document.getElementById('inv-student').value,
+        title: document.getElementById('inv-title').value,
+        amount: parseFloat(document.getElementById('inv-amount').value),
+        due_date: document.getElementById('inv-due').value,
+        status: 'unpaid'
+      });
+      closeModal();
+      await fetchAndRefreshData();
+      renderInvoicesView();
+      showToast("Tagihan SPP Berhasil Diterbitkan!");
+    }
+
+    async function markInvoicePaid(id) {
+      await apiCall('updateInvoiceStatus', { id: id, status: 'paid' });
+      await fetchAndRefreshData();
+      renderInvoicesView();
+      showToast("Status Invoice Diperbarui!");
+    }
+
+    function renderUsersView() {
+      const container = document.getElementById('view-users');
+      container.innerHTML = `
+        <div class="flex justify-between items-center">
+          <div>
+            <h2 class="text-lg font-bold text-slate-800">Kelola Akun, Mapel & Data Siswa</h2>
+            <p class="text-xs text-slate-500">Master login Admin, Pengajar, Orang Tua, Mapel & Data Murid</p>
+          </div>
+          <div class="flex gap-1">
+            <button onclick="openUserModal()" class="bg-blue-800 text-white text-[11px] font-bold px-2 py-1.5 rounded-lg shadow">+ User</button>
+            <button onclick="openSubjectModal()" class="bg-emerald-800 text-white text-[11px] font-bold px-2 py-1.5 rounded-lg shadow">+ Mapel</button>
+            <button onclick="openStudentModal()" class="bg-indigo-800 text-white text-[11px] font-bold px-2 py-1.5 rounded-lg shadow">+ Siswa</button>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs text-xs">
+          <div class="p-2.5 bg-slate-50 font-bold border-b">Daftar Mata Pelajaran (Mapel) Bimbel</div>
+          <div class="divide-y divide-slate-100">
+            ${dummyDB.subjects.length === 0 ? `<p class="p-3 text-slate-400 italic">Belum ada mata pelajaran.</p>` : ''}
+            ${dummyDB.subjects.map(sub => `
+              <div class="p-2.5 flex justify-between items-center">
+                <div>
+                  <p class="font-bold text-slate-800">${sub.subject_name}</p>
+                  <p class="text-[10px] text-slate-500">${sub.description || '-'}</p>
+                </div>
+                <span class="font-mono text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">${sub.id}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs text-xs">
+          <div class="p-2.5 bg-slate-50 font-bold border-b">Daftar Akun Pengguna Login</div>
+          <div class="divide-y divide-slate-100">
+            ${dummyDB.users.map(u => `
+              <div class="p-2.5 flex justify-between items-center">
+                <div>
+                  <p class="font-bold text-slate-800">${u.name} <span class="text-[9px] bg-slate-200 px-1 rounded uppercase">${u.role}</span></p>
+                  <p class="text-[10px] text-slate-500">Username: ${u.username} | WA: ${u.phone || '-'}</p>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs text-xs">
+          <div class="p-2.5 bg-slate-50 font-bold border-b">Daftar Data Siswa Bimbel</div>
+          <div class="divide-y divide-slate-100">
+            ${dummyDB.students.map(s => {
+              const p = dummyDB.users.find(u => u.id === s.parent_id);
+              const c = dummyDB.classes.find(cls => cls.id === s.class_id);
+              return `
+                <div class="p-2.5 flex justify-between items-center">
+                  <div>
+                    <p class="font-bold text-slate-800">${s.name}</p>
+                    <p class="text-[10px] text-slate-500">Wali: ${p ? p.name : '-'} | Kelas: ${c ? c.class_name : '-'}</p>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    function openSubjectModal() {
+      showModal('Tambah Mata Pelajaran Baru', `
+        <form onsubmit="saveSubjectForm(event)" class="space-y-3">
+          <div>
+            <label class="block font-bold mb-1">Nama Mata Pelajaran</label>
+            <input type="text" id="sub-name" required class="w-full p-2 border rounded text-xs" placeholder="misal: Matematika IPA">
+          </div>
+          <div>
+            <label class="block font-bold mb-1">Deskripsi Ringkas</label>
+            <input type="text" id="sub-desc" class="w-full p-2 border rounded text-xs" placeholder="misal: Kurikulum Merdeka & Saintek">
+          </div>
+          <div class="pt-2 flex justify-end gap-2">
+            <button type="button" onclick="closeModal()" class="px-3 py-1 bg-slate-200 font-bold rounded">Batal</button>
+            <button type="submit" class="px-3 py-1 bg-emerald-700 text-white font-bold rounded">Simpan Mapel</button>
+          </div>
+        </form>
+      `);
+    }
+
+    async function saveSubjectForm(e) {
+      e.preventDefault();
+      await apiCall('saveSubject', {
+        subject_name: document.getElementById('sub-name').value,
+        description: document.getElementById('sub-desc').value
+      });
+      closeModal();
+      await fetchAndRefreshData();
+      renderUsersView();
+      showToast("Mata Pelajaran Berhasil Ditambahkan!");
+    }
+
+    function openUserModal() {
+      showModal('Tambah Akun Login Baru', `
+        <form onsubmit="saveUserForm(event)" class="space-y-3">
+          <div>
+            <label class="block font-bold mb-1">Nama Lengkap</label>
+            <input type="text" id="u-name" required class="w-full p-2 border rounded text-xs">
+          </div>
+          <div>
+            <label class="block font-bold mb-1">Username</label>
+            <input type="text" id="u-username" required class="w-full p-2 border rounded text-xs">
+          </div>
+          <div>
+            <label class="block font-bold mb-1">Role Hak Akses</label>
+            <select id="u-role" class="w-full p-2 border rounded text-xs">
+              <option value="parent">Orang Tua / Wali</option>
+              <option value="teacher">Pengajar / Guru</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-bold mb-1">No WhatsApp</label>
+            <input type="text" id="u-phone" required class="w-full p-2 border rounded text-xs" placeholder="0812345...">
+          </div>
+          <div class="pt-2 flex justify-end gap-2">
+            <button type="button" onclick="closeModal()" class="px-3 py-1 bg-slate-200 font-bold rounded">Batal</button>
+            <button type="submit" class="px-3 py-1 bg-blue-800 text-white font-bold rounded">Simpan User</button>
+          </div>
+        </form>
+      `);
+    }
+
+    async function saveUserForm(e) {
+      e.preventDefault();
+      await apiCall('saveUser', {
+        name: document.getElementById('u-name').value,
+        username: document.getElementById('u-username').value,
+        role: document.getElementById('u-role').value,
+        phone: document.getElementById('u-phone').value
+      });
+      closeModal();
+      await fetchAndRefreshData();
+      renderUsersView();
+      showToast("Akun User Berhasil Disimpan!");
+    }
+
+    function openStudentModal() {
+      showModal('Tambah Data Siswa', `
+        <form onsubmit="saveStudentForm(event)" class="space-y-3">
+          <div>
+            <label class="block font-bold mb-1">Nama Siswa</label>
+            <input type="text" id="st-name" required class="w-full p-2 border rounded text-xs">
+          </div>
+          <div>
+            <label class="block font-bold mb-1">Orang Tua / Wali</label>
+            <select id="st-parent" class="w-full p-2 border rounded text-xs">
+              ${dummyDB.users.filter(u => u.role === 'parent').map(p => `<option value="${p.id}">${p.name}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label class="block font-bold mb-1">Pilih Kelas</label>
+            <select id="st-class" class="w-full p-2 border rounded text-xs">
+              ${dummyDB.classes.map(c => `<option value="${c.id}">${c.class_name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="pt-2 flex justify-end gap-2">
+            <button type="button" onclick="closeModal()" class="px-3 py-1 bg-slate-200 font-bold rounded">Batal</button>
+            <button type="submit" class="px-3 py-1 bg-blue-800 text-white font-bold rounded">Simpan Siswa</button>
+          </div>
+        </form>
+      `);
+    }
+
+    async function saveStudentForm(e) {
+      e.preventDefault();
+      await apiCall('saveStudent', {
+        name: document.getElementById('st-name').value,
+        parent_id: document.getElementById('st-parent').value,
+        class_id: document.getElementById('st-class').value
+      });
+      closeModal();
+      await fetchAndRefreshData();
+      renderUsersView();
+      showToast("Data Siswa Berhasil Disimpan!");
+    }
+
+    function renderSettingsView() {
+      const container = document.getElementById('view-settings');
+      const cfg = window.APP_CONFIG;
+
+      container.innerHTML = `
+        <div>
+          <h2 class="text-lg font-bold text-slate-800">Pengaturan SaaS, CS & Rekening Bank</h2>
+          <p class="text-xs text-slate-500">Konfigurasi CS Call Center, Identitas Bimbel & Bank Pembayaran</p>
+        </div>
+
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs max-w-lg">
+          <form onsubmit="saveSettingsForm(event)" class="space-y-3">
+            <div>
+              <label class="block text-xs font-bold mb-1">Nama Lembaga Bimbel</label>
+              <input type="text" id="set-name" value="${cfg.appName}" required class="w-full p-2 border rounded text-xs">
+            </div>
+            <div>
+              <label class="block text-xs font-bold mb-1">URL Logo Aplikasi (PNG/JPG)</label>
+              <input type="url" id="set-logo" value="${cfg.appLogo}" required class="w-full p-2 border rounded text-xs">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-emerald-700 mb-1"><i class="fa-brands fa-whatsapp"></i> Nomor WA Call Center CS (Format: 628...)</label>
+              <input type="text" id="set-phone" value="${cfg.contactPhone}" required class="w-full p-2 border rounded text-xs font-bold">
+            </div>
+
+            <div class="pt-2 border-t border-slate-100 space-y-2">
+              <p class="text-xs font-bold text-blue-900"><i class="fa-solid fa-building-columns mr-1"></i> Pengaturan Rekening Pembayaran SPP</p>
+              <div>
+                <label class="block text-[11px] font-semibold mb-0.5">Nama Bank</label>
+                <input type="text" id="set-bank-name" value="${cfg.bankName || ''}" placeholder="misal: Bank BCA" required class="w-full p-2 border rounded text-xs">
+              </div>
+              <div>
+                <label class="block text-[11px] font-semibold mb-0.5">Nomor Rekening</label>
+                <input type="text" id="set-bank-account" value="${cfg.bankAccount || ''}" placeholder="misal: 1234567890" required class="w-full p-2 border rounded text-xs font-mono font-bold">
+              </div>
+              <div>
+                <label class="block text-[11px] font-semibold mb-0.5">Atas Nama Rekening</label>
+                <input type="text" id="set-bank-holder" value="${cfg.bankHolder || ''}" placeholder="misal: Bimbel Prestasi Digital" required class="w-full p-2 border rounded text-xs">
+              </div>
+            </div>
+
+            <button type="submit" class="bg-blue-800 text-white font-bold text-xs px-4 py-2 rounded-lg shadow">
+              <i class="fa-solid fa-floppy-disk mr-1"></i> Simpan Pengaturan
+            </button>
+          </form>
+        </div>
+      `;
+    }
+
+    async function saveSettingsForm(e) {
+      e.preventDefault();
+      window.APP_CONFIG.appName = document.getElementById('set-name').value;
+      window.APP_CONFIG.appLogo = document.getElementById('set-logo').value;
+      window.APP_CONFIG.contactPhone = document.getElementById('set-phone').value;
+      window.APP_CONFIG.bankName = document.getElementById('set-bank-name').value;
+      window.APP_CONFIG.bankAccount = document.getElementById('set-bank-account').value;
+      window.APP_CONFIG.bankHolder = document.getElementById('set-bank-holder').value;
+
+      await apiCall('saveSetting', window.APP_CONFIG);
+      await fetchAndRefreshData();
+      showToast('Pengaturan Rekening & CS Berhasil Disimpan!');
+      initAppShell();
+    }
+
+    function showModal(title, htmlContent) {
+      document.getElementById('modal-title').textContent = title;
+      document.getElementById('modal-body').innerHTML = htmlContent;
+      document.getElementById('app-modal').classList.remove('hidden');
+    }
+
+    function closeModal() {
+      document.getElementById('app-modal').classList.add('hidden');
+    }
+
+    function showToast(msg) {
+      const toast = document.createElement('div');
+      toast.className = 'fixed bottom-16 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-3 py-1.5 rounded-lg text-xs shadow-lg z-50 font-bold';
+      toast.textContent = msg;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 2500);
+    }
+
+    // PWA Event Handling
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredInstallPrompt = e;
+      document.getElementById('pwa-banner').classList.remove('hidden');
+    });
+
+    function installPWA() {
+      if (deferredInstallPrompt) {
+        deferredInstallPrompt.prompt();
+        deferredInstallPrompt.userChoice.then(() => {
+          deferredInstallPrompt = null;
+          dismissPWA();
+        });
+      }
+    }
+
+    function dismissPWA() {
+      document.getElementById('pwa-banner').classList.add('hidden');
+    }
+  </script>
+</body>
+</html>
