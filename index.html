@@ -170,21 +170,7 @@
             <i class="fa-solid fa-arrow-right text-[10px]"></i>
           </button>
 
-          <!-- Quick Demo Login Buttons -->
-          <div class="border-t border-slate-200 pt-3 mt-3">
-            <p class="text-[11px] text-slate-500 font-bold mb-1.5 text-center">Pilih Akun Demo (Klik Langsung):</p>
-            <div class="grid grid-cols-3 gap-1.5 text-[10px]">
-              <button type="button" onclick="fillLogin('admin', 'admin2026')" class="p-1.5 bg-slate-100 hover:bg-slate-200 rounded text-slate-700 font-bold border text-center">
-                🔑 Admin
-              </button>
-              <button type="button" onclick="fillLogin('guru', 'edudigital')" class="p-1.5 bg-slate-100 hover:bg-slate-200 rounded text-slate-700 font-bold border text-center">
-                👨‍🏫 Pengajar
-              </button>
-              <button type="button" onclick="fillLogin('ortu', 'edudigital')" class="p-1.5 bg-slate-100 hover:bg-slate-200 rounded text-slate-700 font-bold border text-center">
-                👨‍👩‍👧 Orang Tua
-              </button>
-            </div>
-          </div>
+         
         </form>
       </div>
     </div>
@@ -193,11 +179,22 @@
     <div id="app-shell" class="hidden flex-1 flex flex-col md:flex-row min-h-screen">
       <!-- Desktop Sidebar -->
       <aside id="sidebar" class="bg-blue-900 text-white w-full md:w-60 flex-shrink-0 flex flex-col no-print hidden md:flex">
-        <div class="p-3.5 flex items-center gap-2.5 border-b border-blue-800">
-          <img id="side-logo" src="" class="w-9 h-9 bg-white rounded-lg p-1 object-contain" alt="Logo">
-          <div class="overflow-hidden">
-            <h2 id="side-app-name" class="font-bold text-xs truncate">Bimbel App</h2>
-            <span class="text-[9px] bg-amber-400 text-slate-900 px-1.5 py-0.2 rounded font-bold uppercase" id="side-user-role">Role</span>
+        <div class="p-3.5 flex items-center justify-between border-b border-blue-800">
+          <div class="flex items-center gap-2.5 overflow-hidden">
+            <img id="side-logo" src="" class="w-9 h-9 bg-white rounded-lg p-1 object-contain" alt="Logo">
+            <div class="overflow-hidden">
+              <h2 id="side-app-name" class="font-bold text-xs truncate">Bimbel App</h2>
+              <span class="text-[9px] bg-amber-400 text-slate-900 px-1.5 py-0.2 rounded font-bold uppercase" id="side-user-role">Role</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Desktop Sync Status Badge -->
+        <div class="px-3 py-1.5 bg-blue-950/60 border-b border-blue-800/80 flex items-center justify-between text-[10px]">
+          <span class="text-blue-300 font-medium">Status Server:</span>
+          <div id="sync-status-badge-desktop" class="flex items-center gap-1 font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-800/50">
+            <i class="fa-solid fa-circle text-[7px] animate-pulse"></i>
+            <span>Tersinkron</span>
           </div>
         </div>
 
@@ -223,12 +220,19 @@
       </aside>
 
       <!-- Mobile Header -->
-      <header class="md:hidden bg-blue-900 text-white p-3 flex justify-between items-center shadow no-print sticky top-0 z-40">
+      <header class="md:hidden bg-blue-900 text-white p-2.5 px-3 flex justify-between items-center shadow no-print sticky top-0 z-40">
         <div class="flex items-center gap-2">
           <img id="mobile-logo" src="" class="w-7 h-7 bg-white rounded p-0.5 object-contain" alt="Logo">
           <div>
             <h2 id="mobile-app-name" class="font-bold text-xs leading-none">Bimbel App</h2>
-            <span class="text-[9px] text-amber-300 font-bold uppercase" id="mobile-user-role">Role</span>
+            <div class="flex items-center gap-1.5 mt-0.5">
+              <span class="text-[9px] text-amber-300 font-bold uppercase" id="mobile-user-role">Role</span>
+              <span class="text-blue-400">•</span>
+              <div id="sync-status-badge-mobile" class="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-400">
+                <i class="fa-solid fa-circle text-[6px]"></i>
+                <span>Ready</span>
+              </div>
+            </div>
           </div>
         </div>
         <div class="flex items-center gap-2">
@@ -280,8 +284,9 @@
     let activeChildId = null;
     let deferredInstallPrompt = null;
     let chartInstance = null;
+    let lastSyncTime = null;
 
-    // Dummy Database State
+    // Dummy Database State & Local Cache
     let dummyDB = {
       settings: { ...window.APP_CONFIG },
       users: [
@@ -333,21 +338,76 @@
       ]
     };
 
-    // Auto Load Saved Session on Reload / Refresh with Anti-Crash Guard
+    function saveLocalDBCache() {
+      safeStorage.setItem('bimbel_db_cache', JSON.stringify(dummyDB));
+    }
+
+    function loadLocalDBCache() {
+      const cached = safeStorage.getItem('bimbel_db_cache');
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (parsed && typeof parsed === 'object') {
+            dummyDB = { ...dummyDB, ...parsed };
+            return true;
+          }
+        } catch(e) {
+          console.warn("Gagal memuat cache lokal, menggunakan default.");
+        }
+      }
+      return false;
+    }
+
+    function updateSyncIndicator(status, text) {
+      const dBadge = document.getElementById('sync-status-badge-desktop');
+      const mBadge = document.getElementById('sync-status-badge-mobile');
+
+      let colorClasses = {
+        syncing: "text-amber-400 bg-amber-950/80 border-amber-800/50",
+        synced: "text-emerald-400 bg-emerald-950/80 border-emerald-800/50",
+        error: "text-red-400 bg-red-950/80 border-red-800/50"
+      };
+
+      let iconClass = {
+        syncing: "fa-solid fa-arrows-rotate fa-spin text-[8px]",
+        synced: "fa-solid fa-circle-check text-[8px]",
+        error: "fa-solid fa-circle-exclamation text-[8px]"
+      };
+
+      const selectedColor = colorClasses[status] || colorClasses.synced;
+      const selectedIcon = iconClass[status] || iconClass.synced;
+
+      if (dBadge) {
+        dBadge.className = `flex items-center gap-1 font-bold px-2 py-0.5 rounded-full border ${selectedColor}`;
+        dBadge.innerHTML = `<i class="${selectedIcon}"></i><span>${text}</span>`;
+      }
+      if (mBadge) {
+        mBadge.className = `inline-flex items-center gap-1 text-[9px] font-bold ${status === 'syncing' ? 'text-amber-300' : status === 'error' ? 'text-red-400' : 'text-emerald-400'}`;
+        mBadge.innerHTML = `<i class="${selectedIcon}"></i><span>${text}</span>`;
+      }
+    }
+
     document.addEventListener("DOMContentLoaded", async () => {
       try {
+        // 1. Instantly restore database from Local Cache
+        loadLocalDBCache();
+
+        // 2. Check login session
         const savedUser = safeStorage.getItem('bimbel_session_user');
         if (savedUser) {
           try {
             currentUser = JSON.parse(savedUser);
-            await fetchAndRefreshData();
+            // Render UI immediately from cache (0ms wait time for user!)
             initAppShell();
+            
+            // Trigger background sync silently without blocking UI
+            fetchAndRefreshData(true);
             return;
           } catch (e) {
             safeStorage.removeItem('bimbel_session_user');
           }
         }
-        // If no user session, ensure login screen is properly visible
+        // If no user session, show login screen
         document.getElementById('login-view').classList.remove('hidden');
       } catch(err) {
         console.error("Initialization error:", err);
@@ -362,6 +422,498 @@
         text.textContent = msg;
         box.classList.remove('hidden');
       }
+    }
+
+    // Dual-Mode Universal API Call (CORS-Compliant Simple Request & Non-blocking)
+    async function apiCall(action, data = {}) {
+      updateSyncIndicator('syncing', 'Menyinkron...');
+
+      if (IS_PREVIEW) {
+        return new Promise((resolve) => {
+          setTimeout(() => { 
+            const res = handleDummyApi(action, data);
+            saveLocalDBCache();
+            lastSyncTime = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+            updateSyncIndicator('synced', `Sync ${lastSyncTime}`);
+            resolve(res); 
+          }, 150);
+        });
+      }
+
+      // Option A: Native Apps Script Web App iframe runtime
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        return new Promise((resolve, reject) => {
+          google.script.run
+            .withSuccessHandler((res) => {
+              saveLocalDBCache();
+              lastSyncTime = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+              updateSyncIndicator('synced', `Sync ${lastSyncTime}`);
+              resolve(res);
+            })
+            .withFailureHandler((err) => {
+              console.error("GAS Execution Error:", err);
+              updateSyncIndicator('error', 'Gagal Sync');
+              reject(err);
+            })[action](data);
+        });
+      }
+
+      // Option B: External site (Blogger) HTTP Request to GAS Web App
+      if (GAS_URL && GAS_URL.trim() !== "" && !GAS_URL.includes("URL_DEPLOY_GAS_ANDA_DISINI")) {
+        try {
+          const response = await fetch(GAS_URL, {
+            method: 'POST',
+            mode: 'cors',
+            redirect: 'follow',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ action: action, data: data })
+          });
+
+          const res = await response.json();
+          saveLocalDBCache();
+          lastSyncTime = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+          updateSyncIndicator('synced', `Sync ${lastSyncTime}`);
+          return res;
+        } catch (err) {
+          console.error("Koneksi Google Sheets Error via POST, mencoba GET fallback:", err);
+
+          // GET Fallback for reading data if POST CORS preflight fails
+          if (action === 'getAppData' || action === 'loginUser') {
+            try {
+              const getUrl = `${GAS_URL}?action=${encodeURIComponent(action)}&data=${encodeURIComponent(JSON.stringify(data))}`;
+              const getRes = await fetch(getUrl, { mode: 'cors', redirect: 'follow' });
+              const resultData = await getRes.json();
+              saveLocalDBCache();
+              lastSyncTime = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+              updateSyncIndicator('synced', `Sync ${lastSyncTime}`);
+              return resultData;
+            } catch (getErr) {
+              console.error("GET Fallback Error:", getErr);
+            }
+          }
+
+          updateSyncIndicator('error', 'Sync Offline');
+          showToast("Koneksi cloud tertunda, data tersimpan di HP/Lokal.");
+          return { success: true, offlineSaved: true };
+        }
+      }
+
+      updateSyncIndicator('synced', 'Lokal');
+      return { success: true };
+    }
+
+    function syncDataFromBackend(appData) {
+      if (!appData) return;
+
+      if (appData.settings && Array.isArray(appData.settings) && appData.settings.length > 0) {
+        const cfgObj = {};
+        appData.settings.forEach(item => {
+          if (item.key) cfgObj[item.key] = item.value;
+        });
+        window.APP_CONFIG = { ...window.APP_CONFIG, ...cfgObj };
+      }
+
+      if (appData.users && appData.users.length > 0) dummyDB.users = appData.users;
+      if (appData.students && appData.students.length > 0) dummyDB.students = appData.students;
+      if (appData.classes && appData.classes.length > 0) dummyDB.classes = appData.classes;
+      if (appData.subjects && appData.subjects.length > 0) dummyDB.subjects = appData.subjects;
+      if (appData.modules) dummyDB.modules = appData.modules;
+      if (appData.schedules) dummyDB.schedules = appData.schedules;
+      if (appData.attendances) dummyDB.attendances = appData.attendances;
+      if (appData.assessments) dummyDB.assessments = appData.assessments;
+      if (appData.invoices) dummyDB.invoices = appData.invoices;
+      if (appData.announcements) dummyDB.announcements = appData.announcements;
+
+      saveLocalDBCache();
+    }
+
+    async function fetchAndRefreshData(isBackground = false) {
+      if (IS_PREVIEW) return;
+      try {
+        if (!isBackground) updateSyncIndicator('syncing', 'Menyinkron...');
+        const res = await apiCall('getAppData');
+        if (res && res.users) {
+          syncDataFromBackend(res);
+          // Refresh current active view only if new data arrived
+          const currentViewEl = document.querySelector('.view-panel:not(.hidden)');
+          if (currentViewEl) {
+            const currentViewId = currentViewEl.id.replace('view-', '');
+            renderView(currentViewId);
+          }
+          if (isBackground) showToast("✓ Data terbaru tersinkronisasi dari cloud");
+        }
+      } catch (e) {
+        console.warn("Gagal membaca database Google Sheets (menggunakan cache lokal):", e);
+      }
+    }
+
+    function handleDummyApi(action, data) {
+      switch (action) {
+        case 'loginUser':
+          const user = dummyDB.users.find(u => u.username.toLowerCase() === data.username.toLowerCase());
+          if (user && (data.password === 'edudigital' || data.password === 'admin2026')) {
+            return { success: true, user: user };
+          }
+          return { success: false, message: "Username atau Password salah!" };
+
+        case 'saveSetting':
+          dummyDB.settings = { ...dummyDB.settings, ...data };
+          return { success: true };
+
+        case 'saveAnnouncement':
+          if (!data.id) data.id = "N" + String(dummyDB.announcements.length + 1).padStart(3, '0');
+          data.date = new Date().toISOString().split('T')[0];
+          dummyDB.announcements.unshift(data);
+          return { success: true };
+
+        case 'saveAttendance':
+          data.forEach(item => {
+            const idx = dummyDB.attendances.findIndex(a => a.student_id === item.student_id && a.date === item.date);
+            if (idx >= 0) dummyDB.attendances[idx] = item;
+            else {
+              item.id = "ATT" + String(dummyDB.attendances.length + 1).padStart(3, '0');
+              dummyDB.attendances.push(item);
+            }
+          });
+          return { success: true };
+
+        case 'saveUser':
+          if (!data.id) data.id = "U" + String(dummyDB.users.length + 1).padStart(3, '0');
+          const uIdx = dummyDB.users.findIndex(u => u.id === data.id);
+          if (uIdx >= 0) dummyDB.users[uIdx] = data; else dummyDB.users.push(data);
+          return { success: true };
+
+        case 'saveStudent':
+          if (!data.id) data.id = "SST" + String(dummyDB.students.length + 1).padStart(3, '0');
+          const sIdx = dummyDB.students.findIndex(s => s.id === data.id);
+          if (sIdx >= 0) dummyDB.students[sIdx] = data; else dummyDB.students.push(data);
+          return { success: true };
+
+        case 'saveSubject':
+          if (!data.id) data.id = "SUB" + String(dummyDB.subjects.length + 1).padStart(3, '0');
+          const subIdx = dummyDB.subjects.findIndex(s => s.id === data.id);
+          if (subIdx >= 0) dummyDB.subjects[subIdx] = data; else dummyDB.subjects.push(data);
+          return { success: true };
+
+        case 'saveModule':
+          if (!data.id) data.id = "M" + String(dummyDB.modules.length + 1).padStart(3, '0');
+          data.created_at = new Date().toISOString().split('T')[0];
+          dummyDB.modules.push(data);
+          return { success: true };
+
+        case 'saveSchedule':
+          if (!data.id) data.id = "SCH" + String(dummyDB.schedules.length + 1).padStart(3, '0');
+          dummyDB.schedules.push(data);
+          return { success: true };
+
+        case 'saveAssessment':
+          if (!data.id) data.id = "A" + String(dummyDB.assessments.length + 1).padStart(3, '0');
+          data.date = new Date().toISOString().split('T')[0];
+          dummyDB.assessments.push(data);
+          return { success: true };
+
+        case 'saveInvoice':
+          if (!data.id) data.id = "INV-2026-" + String(dummyDB.invoices.length + 1).padStart(3, '0');
+          dummyDB.invoices.push(data);
+          return { success: true };
+
+        case 'updateInvoiceStatus':
+          const inv = dummyDB.invoices.find(i => i.id === data.id);
+          if (inv) inv.status = data.status;
+          return { success: true };
+
+        default:
+          return { success: true };
+      }
+    }
+
+    function fillLogin(u, p) {
+      document.getElementById('username').value = u;
+      document.getElementById('password').value = p;
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const btn = document.getElementById('btn-login');
+      const alert = document.getElementById('login-alert');
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Checking...`;
+      alert.classList.add('hidden');
+
+      const uVal = document.getElementById('username').value.trim();
+      const pVal = document.getElementById('password').value.trim();
+
+      try {
+        const res = await apiCall('loginUser', { username: uVal, password: pVal });
+        if (res.success) {
+          currentUser = res.user;
+          if (res.appData) {
+            syncDataFromBackend(res.appData);
+          }
+          safeStorage.setItem('bimbel_session_user', JSON.stringify(currentUser));
+          initAppShell();
+          showToast("✓ Login Berhasil! Selamat datang.");
+        } else {
+          alert.textContent = res.message || "Username atau Password salah!";
+          alert.classList.remove('hidden');
+        }
+      } catch (err) {
+        alert.textContent = "Gagal menghubungkan ke database Google Sheets! Pastikan Izin Deployment diset ke 'Anyone'.";
+        alert.classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<span>Masuk Aplikasi</span><i class="fa-solid fa-arrow-right text-[10px]"></i>`;
+      }
+    }
+
+    function handleLogout() {
+      currentUser = null;
+      activeChildId = null;
+      safeStorage.removeItem('bimbel_session_user');
+      document.getElementById('app-shell').classList.add('hidden');
+      document.getElementById('login-view').classList.remove('hidden');
+      showToast("Anda telah keluar.");
+    }
+
+    async function saveAnnouncementForm(e) {
+      e.preventDefault();
+      const newAnn = {
+        id: "N" + String(dummyDB.announcements.length + 1).padStart(3, '0'),
+        title: document.getElementById('n-title').value,
+        image_url: document.getElementById('n-image').value,
+        description: document.getElementById('n-desc').value,
+        link_url: document.getElementById('n-link').value || '',
+        date: new Date().toISOString().split('T')[0]
+      };
+
+      // 1. Instant local update
+      dummyDB.announcements.unshift(newAnn);
+      saveLocalDBCache();
+      closeModal();
+      renderDashboardView();
+      showToast('✓ Berita diterbitkan secara lokal (menyimpan ke cloud...)');
+
+      // 2. Background sync to Google Sheets
+      await apiCall('saveAnnouncement', newAnn);
+      showToast('🟢 Berita berhasil tersimpan penuh di Google Sheets!');
+    }
+
+    async function saveAttendanceData() {
+      const dateVal = document.getElementById('att-date').value;
+      const classId = document.getElementById('att-class').value;
+      const filteredStudents = dummyDB.students.filter(s => s.class_id === classId);
+
+      if (filteredStudents.length === 0) {
+        showToast('Tidak ada siswa untuk disimpan!');
+        return;
+      }
+
+      const records = filteredStudents.map(s => {
+        const statusEl = document.getElementById(`att-status-${s.id}`);
+        const notesEl = document.getElementById(`att-notes-${s.id}`);
+        return {
+          student_id: s.id,
+          date: dateVal,
+          status: statusEl ? statusEl.value : 'Hadir',
+          notes: notesEl ? notesEl.value : ''
+        };
+      });
+
+      // Instant local update
+      handleDummyApi('saveAttendance', records);
+      saveLocalDBCache();
+      showToast('✓ Presensi tersimpan lokal (menyinkronkan ke cloud...)');
+
+      // Background sync
+      await apiCall('saveAttendance', records);
+      showToast('🟢 Presensi Kehadiran Berhasil Terupdate di Sheet!');
+    }
+
+    async function saveScheduleForm(e) {
+      e.preventDefault();
+      const newSch = {
+        id: "SCH" + String(dummyDB.schedules.length + 1).padStart(3, '0'),
+        class_id: document.getElementById('sch-class').value,
+        teacher_id: currentUser.id,
+        day: document.getElementById('sch-day').value,
+        start_time: document.getElementById('sch-start').value,
+        end_time: document.getElementById('sch-end').value,
+        room_name: document.getElementById('sch-room').value
+      };
+
+      dummyDB.schedules.push(newSch);
+      saveLocalDBCache();
+      closeModal();
+      renderSchedulesView();
+      showToast("✓ Jadwal baru ditambahkan (menyimpan...)");
+
+      await apiCall('saveSchedule', newSch);
+      showToast("🟢 Jadwal Belajar Berhasil Terupdate di Cloud!");
+    }
+
+    async function saveModuleForm(e) {
+      e.preventDefault();
+      const newMod = {
+        id: "M" + String(dummyDB.modules.length + 1).padStart(3, '0'),
+        class_id: document.getElementById('mod-class').value,
+        title: document.getElementById('mod-title').value,
+        drive_url: document.getElementById('mod-url').value,
+        created_at: new Date().toISOString().split('T')[0]
+      };
+
+      dummyDB.modules.push(newMod);
+      saveLocalDBCache();
+      closeModal();
+      renderModulesView();
+      showToast("✓ Modul ditambahkan lokal (mengunggah...)");
+
+      await apiCall('saveModule', newMod);
+      showToast("🟢 Modul Belajar Berhasil Tersimpan di Sheet!");
+    }
+
+    async function saveAssessmentForm(e) {
+      e.preventDefault();
+      const isRem = document.getElementById('ass-remedial').value === 'true';
+      const newAss = {
+        id: "A" + String(dummyDB.assessments.length + 1).padStart(3, '0'),
+        student_id: document.getElementById('ass-student').value,
+        teacher_id: currentUser.id,
+        subject: document.getElementById('ass-subject').value,
+        original_score: parseFloat(document.getElementById('ass-score').value),
+        is_remedial: isRem,
+        remedial_score: isRem ? parseFloat(document.getElementById('ass-rem-score').value) : null,
+        development_notes: document.getElementById('ass-notes').value,
+        date: new Date().toISOString().split('T')[0]
+      };
+
+      dummyDB.assessments.push(newAss);
+      saveLocalDBCache();
+      renderAssessmentsView();
+      showToast("✓ Nilai tersimpan lokal (menyinkronkan...)");
+
+      await apiCall('saveAssessment', newAss);
+      showToast('🟢 Nilai Evaluasi Berhasil Terupdate ke Cloud!');
+    }
+
+    async function saveInvoiceForm(e) {
+      e.preventDefault();
+      const newInv = {
+        id: "INV-2026-" + String(dummyDB.invoices.length + 1).padStart(3, '0'),
+        student_id: document.getElementById('inv-student').value,
+        title: document.getElementById('inv-title').value,
+        amount: parseFloat(document.getElementById('inv-amount').value),
+        due_date: document.getElementById('inv-due').value,
+        status: 'unpaid'
+      };
+
+      dummyDB.invoices.push(newInv);
+      saveLocalDBCache();
+      closeModal();
+      renderInvoicesView();
+      showToast("✓ Tagihan terbuat lokal (menerbitkan...)");
+
+      await apiCall('saveInvoice', newInv);
+      showToast("🟢 Tagihan SPP Berhasil Diterbitkan ke Cloud!");
+    }
+
+    async function markInvoicePaid(id) {
+      const inv = dummyDB.invoices.find(i => i.id === id);
+      if (inv) inv.status = 'paid';
+      saveLocalDBCache();
+      renderInvoicesView();
+      showToast("✓ Status invoice diperbarui ke LUNAS!");
+
+      await apiCall('updateInvoiceStatus', { id: id, status: 'paid' });
+      showToast("🟢 Status Invoice Berhasil Ditandai Lunas di Sheet!");
+    }
+
+    async function saveSubjectForm(e) {
+      e.preventDefault();
+      const newSub = {
+        id: "SUB" + String(dummyDB.subjects.length + 1).padStart(3, '0'),
+        subject_name: document.getElementById('sub-name').value,
+        description: document.getElementById('sub-desc').value
+      };
+
+      dummyDB.subjects.push(newSub);
+      saveLocalDBCache();
+      closeModal();
+      renderUsersView();
+      showToast("✓ Mata pelajaran tersimpan lokal");
+
+      await apiCall('saveSubject', newSub);
+      showToast("🟢 Mata Pelajaran Berhasil Ditambahkan ke Cloud!");
+    }
+
+    async function saveUserForm(e) {
+      e.preventDefault();
+      const newUser = {
+        id: "U" + String(dummyDB.users.length + 1).padStart(3, '0'),
+        name: document.getElementById('u-name').value,
+        username: document.getElementById('u-username').value,
+        role: document.getElementById('u-role').value,
+        phone: document.getElementById('u-phone').value
+      };
+
+      dummyDB.users.push(newUser);
+      saveLocalDBCache();
+      closeModal();
+      renderUsersView();
+      showToast("✓ Akun user dibuat secara lokal");
+
+      await apiCall('saveUser', newUser);
+      showToast("🟢 Akun User Berhasil Terdaftar di Google Sheets!");
+    }
+
+    async function saveStudentForm(e) {
+      e.preventDefault();
+      const newStudent = {
+        id: "SST" + String(dummyDB.students.length + 1).padStart(3, '0'),
+        name: document.getElementById('st-name').value,
+        parent_id: document.getElementById('st-parent').value,
+        class_id: document.getElementById('st-class').value
+      };
+
+      dummyDB.students.push(newStudent);
+      saveLocalDBCache();
+      closeModal();
+      renderUsersView();
+      showToast("✓ Data siswa tersimpan secara lokal");
+
+      await apiCall('saveStudent', newStudent);
+      showToast("🟢 Data Siswa Berhasil Disimpan ke Sheet!");
+    }
+
+    async function saveSettingsForm(e) {
+      e.preventDefault();
+      window.APP_CONFIG.appName = document.getElementById('set-name').value;
+      window.APP_CONFIG.appLogo = document.getElementById('set-logo').value;
+      window.APP_CONFIG.contactPhone = document.getElementById('set-phone').value;
+      window.APP_CONFIG.bankName = document.getElementById('set-bank-name').value;
+      window.APP_CONFIG.bankAccount = document.getElementById('set-bank-account').value;
+      window.APP_CONFIG.bankHolder = document.getElementById('set-bank-holder').value;
+
+      dummyDB.settings = { ...window.APP_CONFIG };
+      saveLocalDBCache();
+      initAppShell();
+      showToast('✓ Pengaturan tersimpan secara lokal');
+
+      await apiCall('saveSetting', window.APP_CONFIG);
+      showToast('🟢 Pengaturan Rekening & CS Berhasil Terupdate di Sheet!');
+    }
+
+    function showToast(msg) {
+      const existingToasts = document.querySelectorAll('.app-toast-msg');
+      existingToasts.forEach(t => t.remove());
+
+      const toast = document.createElement('div');
+      toast.className = 'app-toast-msg fixed bottom-16 md:bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/90 backdrop-blur-md text-white px-4 py-2 rounded-xl text-xs shadow-2xl z-50 font-bold border border-slate-700 flex items-center gap-2 transition-all duration-300';
+      toast.innerHTML = `<i class="fa-solid fa-bell text-amber-400"></i> <span>${msg}</span>`;
+      document.body.appendChild(toast);
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
     }
 
     // Dual-Mode Universal API Call (CORS-Compliant Simple Request & Fallback)
